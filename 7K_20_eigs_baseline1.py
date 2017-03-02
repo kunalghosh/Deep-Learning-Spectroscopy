@@ -104,4 +104,8 @@ if __name__ == "__main__":
 
     Y_pred = model.predict(X_test)
     print("Got predictions: saved in Y_pred")
+
+    np.savetxt("Y_pred.txt",Y_pred)
+    np.savetxt("Y_test.txt",Y_test)
+    print("Saved Y_pred and Y_test to disk")
     pdb.set_trace()
