@@ -159,7 +159,7 @@ def get_options(batchsize, nepochs, plotevery,
     energy_output = get_output(l_output)
     binary_output = get_output(l_binOut)
 
-    loss_real   = T.mean(abs(energy_output - th_energies))
+    loss_real   = T.sum(abs(energy_output - th_energies))
     loss_binary = T.sum(binary_crossentropy(binary_output, th_energies_bin))
     loss = loss_real + loss_binary
     
