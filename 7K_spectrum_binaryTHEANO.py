@@ -122,7 +122,7 @@ def get_options(batchsize, nepochs, plotevery,
 
     # Load dataset
     X,Y = load_data(datadir + os.sep + "coulomb.txt",
-                    datadir + os.sep + "energies.txt")
+                    datadir + os.sep + "spectra_-30_0_300.txt")
     Y, Y_mean, Y_std, Y_binarized = preprocess_targets(Y)
     [X_train, X_test], [Y_train, Y_test], splits = get_data_splits(X,Y, splits=[90,10])
     [Y_binarized_train, Y_binarized_test] = np.split(Y_binarized,splits)[:-1]
@@ -131,6 +131,7 @@ def get_options(batchsize, nepochs, plotevery,
     np.savez('X_vals.npz', X_train=X_train, X_test=X_test)
 
     dataDim = X.shape[1:]
+    outputDim = Y.shape[1]
  
     # TODO !!!!I am here
     # print("Train set size {}, Train set (labelled) size {}, Test set size {}," +
@@ -144,16 +145,16 @@ def get_options(batchsize, nepochs, plotevery,
     th_energies     = T.fmatrix()
     th_energies_bin = T.fmatrix()
 
-    l_input    = InputLayer(shape=(None, 1, 29,29),input_var=th_coulomb,  name="Input")
-    l_conv1    = Conv2DLayer(l_input,5,3, pad="same",                     name="conv1")
-    l_conv2    = Conv2DLayer(l_conv1,5,3, pad="same",                     name="conv2")
-    l_maxpool1 = MaxPool2DLayer(l_conv2, (2,2),                           name="maxpool1")
-    l_conv3    = Conv2DLayer(l_maxpool1, 5, 2, pad="same",                name="conv3")
-    l_maxpool2 = MaxPool2DLayer(l_conv3, (2,2),                           name="maxpool2")
-    l_conv4    = Conv2DLayer(l_maxpool2, 5, 2, pad="same",                name="conv4")
-    l_flatten  = FlattenLayer(l_conv4,                                    name="flatten")
-    l_realOut  = DenseLayer(l_flatten, num_units=20, nonlinearity=linear, name="realOut")
-    l_binOut   = DenseLayer(l_flatten, num_units=20, nonlinearity=sigmoid,name="binOut")
+    l_input    = InputLayer(shape=(None, 1, 29,29),input_var=th_coulomb,         name="Input")
+    l_conv1    = Conv2DLayer(l_input,5,3, pad="same",                            name="conv1")
+    l_conv2    = Conv2DLayer(l_conv1,5,3, pad="same",                            name="conv2")
+    l_maxpool1 = MaxPool2DLayer(l_conv2, (2,2),                                  name="maxpool1")
+    l_conv3    = Conv2DLayer(l_maxpool1, 5, 2, pad="same",                       name="conv3")
+    l_maxpool2 = MaxPool2DLayer(l_conv3, (2,2),                                  name="maxpool2")
+    l_conv4    = Conv2DLayer(l_maxpool2, 5, 2, pad="same",                       name="conv4")
+    l_flatten  = FlattenLayer(l_conv4,                                           name="flatten")
+    l_realOut  = DenseLayer(l_flatten, num_units=outputDim, nonlinearity=linear, name="realOut")
+    l_binOut   = DenseLayer(l_flatten, num_units=outputDim, nonlinearity=sigmoid,name="binOut")
     l_output   = ElemwiseMergeLayer([l_binOut, l_realOut], T.mul)
 
     energy_output = get_output(l_output)
@@ -210,9 +211,9 @@ def get_options(batchsize, nepochs, plotevery,
                 batchIdx = epoch*minibatches+minibatch
                 fn = 'params_{:>010d}'.format() # saving params
                 param_values = get_all_param_values(l_output)
-                param_norm   = np.linalg.norm(np.hstack([param.flatten() for param in param_values]))
+                param_norm   = np.linalg.norm(np.hstack([np.asarray(param).flatten() for param in param_values]))
                 gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
-                gradient_norm = np.linalg.norm(np.hstack([gradient.flatten() for gradient in gradients]))
+                gradient_norm = np.linalg.norm(np.hstack([np.asarray(gradient).flatten() for gradient in gradients]))
                 logger.debug("Epoch : {:0>4}  minibatch {:0>3} Gradient Norm : {:>0.4}, Param Norm : {:>0.4} GradNorm/ParamNorm : {:>0.4} (Values from Prev. Minibatch) Train loss {}".format(epoch, minibatch, gradient_norm, param_norm, gradient_norm/param_norm,train_loss[-1]))
                 param_names  = [param.__str__() for param in get_all_params(l_output)]
                 np.savez(fn + '.npz', **dict(zip(param_names, param_values)))
@@ -227,7 +228,7 @@ def get_options(batchsize, nepochs, plotevery,
 
             fn = 'params_{:>03d}'.format(epoch) # saving params
             param_values = get_all_param_values(l_output)
-            param_norm   = np.linalg.norm(np.hstack([param.flatten() for param in param_values]))
+            param_norm   = np.linalg.norm(np.hstack([np.asarray(param).flatten() for param in param_values]))
             param_names  = [param.__str__() for param in get_all_params(l_output)]
             if not enabledebug:
                 np.savez(fn + '.npz', **dict(zip(param_names, param_values)))
@@ -235,7 +236,7 @@ def get_options(batchsize, nepochs, plotevery,
 
 
             gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
-            gradient_norm = np.linalg.norm(np.hstack([gradient.flatten() for gradient in gradients]))
+            gradient_norm = np.linalg.norm(np.hstack([np.asarray(gradient).flatten() for gradient in gradients]))
             logger.info("  Gradient Norm : {}, Param Norm : {} GradNorm/ParamNorm : {} ".format(gradient_norm, param_norm, gradient_norm/param_norm))
             logger.info("  Train loss {:>0.4}".format(np.mean(train_loss)))
             
