@@ -138,6 +138,7 @@ def get_options(batchsize, nepochs, plotevery,
     datapoints = len(X_train)
     print("datapoints = %d"%datapoints)
 
+    # making the datapoints shared variables
     X_train           = make_shared(X_train)
     X_test            = make_shared(X_test)
     Y_train           = make_shared(Y_train)
@@ -213,6 +214,9 @@ def get_options(batchsize, nepochs, plotevery,
         script = app_name
         for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","script"]:
             f.write("{} : {}\n".format(elem, eval(elem)))
+
+    train_loss_lowest = np.inf
+    test_loss_lowest = np.inf
     
     for epoch in range(epochs):
         batch_start = 0
@@ -245,6 +249,9 @@ def get_options(batchsize, nepochs, plotevery,
                 param_names  = [param.__str__() for param in get_all_params(l_output)]
                 np.savez(fn + '.npz', **dict(zip(param_names, param_values)))
                 np.savez('Y_train_pred_{}.npz'.format(batchIdx), Y_train_pred = train_output[1])
+                if train_loss[-1] < train_loss_lowest:
+                    train_loss_lowest = train_loss[-1]
+                    np.savez('Y_train_pred_best.npz', Y_train_pred = train_output[1])
                 if np.isnan(gradient_norm):
                     pdb.set_trace()
                 
@@ -260,19 +267,28 @@ def get_options(batchsize, nepochs, plotevery,
             if not enabledebug:
                 np.savez(fn + '.npz', **dict(zip(param_names, param_values)))
                 np.savez('Y_train_pred_{}.npz'.format(epoch), Y_train_pred = train_output[1])
+                mean_train_loss = np.mean(train_loss)
+                if mean_train_loss < train_loss_lowest:
+                    train_loss_lowest = mean_train_loss
+                    np.savez('Y_train_pred_best.npz', Y_train_pred = train_output[1])
+
 
 
             # gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
             gradients = get_grad(train_idxs)
             gradient_norm = np.linalg.norm(np.hstack([np.asarray(gradient).flatten() for gradient in gradients]))
             logger.info("  Gradient Norm : {}, Param Norm : {} GradNorm/ParamNorm : {} ".format(gradient_norm, param_norm, gradient_norm/param_norm))
-            logger.info("  Train loss {:>0.4}".format(np.mean(train_loss)))
+            logger.info("  Train loss {:>0.4}".format(mean_train_loss))
             
             # test_loss, test_prediction = val_fn(X_test, Y_test, Y_binarized_test)
             test_loss, test_prediction = val_fn()
             np.savez('Y_test_pred_{}.npz'.format(epoch), Y_test_pred = test_prediction)
             logger.info("  Test loss {}".format(test_loss))
-            
+            if test_loss < test_loss_lowest:
+                test_loss_lowest = test_loss 
+                np.savez('Y_test_pred_best.npz', Y_test_pred = test_prediction)
+
+           
 if __name__ == "__main__":
     get_options()
 
