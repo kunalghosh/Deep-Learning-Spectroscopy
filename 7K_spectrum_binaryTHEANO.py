@@ -77,6 +77,9 @@ def get_data_splits(X,Y,splits=None, randomize=None):
     return np.split(X, index_splits)[:-1], np.split(Y, index_splits)[:-1], index_splits
 
 
+def make_shared(data, borrow=True):
+    shared_data = theano.shared(np.asarray(data, dtype=theano.config.floatX), borrow=borrow)
+    return shared_data
 
 batch_size = None
 epochs = None
@@ -132,6 +135,15 @@ def get_options(batchsize, nepochs, plotevery,
 
     dataDim = X.shape[1:]
     outputDim = Y.shape[1]
+    datapoints = len(X_train)
+    print("datapoints = %d"%datapoints)
+
+    X_train           = make_shared(X_train)
+    X_test            = make_shared(X_test)
+    Y_train           = make_shared(Y_train)
+    Y_test            = make_shared(Y_test)
+    Y_binarized_train = make_shared(Y_binarized_train)
+    Y_binarized_test  = make_shared(Y_binarized_test)
  
     # TODO !!!!I am here
     # print("Train set size {}, Train set (labelled) size {}, Test set size {}," +
@@ -144,6 +156,7 @@ def get_options(batchsize, nepochs, plotevery,
     th_coulomb      = T.ftensor4()
     th_energies     = T.fmatrix()
     th_energies_bin = T.fmatrix()
+    indices         = T.ivector()
 
     l_input    = InputLayer(shape=(None, 1, 29,29),input_var=th_coulomb,         name="Input")
     l_conv1    = Conv2DLayer(l_input,5,3, pad="same",                            name="conv1")
@@ -176,13 +189,25 @@ def get_options(batchsize, nepochs, plotevery,
     optimization_algo = get_optimizer[optimizer]
     updates = optimization_algo(grad, params, learning_rate=learningrate)
    
-    train_fn  = theano.function([th_coulomb, th_energies, th_energies_bin], [loss, energy_output], updates=updates, allow_input_downcast=True)
-    get_grad  = theano.function([th_coulomb, th_energies, th_energies_bin], grad)
+    # train_fn  = theano.function([th_coulomb, th_energies, th_energies_bin], [loss, energy_output], updates=updates, allow_input_downcast=True)
+    train_fn  = theano.function([indices], [loss, energy_output], updates=updates, allow_input_downcast=True,
+            givens = {th_coulomb: X_train[indices,:],
+                      th_energies: Y_train[indices,:],
+                      th_energies_bin: Y_binarized_train[indices,:]
+                })
+    # get_grad  = theano.function([th_coulomb, th_energies, th_energies_bin], grad)
+    get_grad  = theano.function([indices], grad, allow_input_downcast=True, 
+            givens = {th_coulomb: X_train[indices,:],
+                      th_energies: Y_train[indices,:],
+                      th_energies_bin: Y_binarized_train[indices,:]
+                })
     # get_updates = theano.function([th_data, th_labl], [updates.values()])
-    val_fn    = theano.function([th_coulomb, th_energies, th_energies_bin], [loss, energy_output], updates=updates, allow_input_downcast=True)
+    val_fn    = theano.function([], [loss, energy_output], updates=updates, allow_input_downcast=True,
+            givens = {th_coulomb: X_test,
+                      th_energies: Y_test,
+                      th_energies_bin: Y_binarized_test
+                })
     
-    datapoints = len(X_train)
-    print("datapoints = %d"%datapoints)
     
     with open(os.path.join(mydir, "data.txt"),"w") as f:
         script = app_name
@@ -197,11 +222,12 @@ def get_options(batchsize, nepochs, plotevery,
         minibatches = int(datapoints/batch_size)
         for minibatch in range(minibatches):
             train_idxs     = indices[batch_start:batch_start+batch_size]
-            X_train_batch  = X_train[train_idxs,:]
-            Yr_train_batch = Y_train[train_idxs,:]
-            Yb_train_batch = Y_binarized_train[train_idxs, :]
+            # X_train_batch  = X_train[train_idxs,:]
+            # Yr_train_batch = Y_train[train_idxs,:]
+            # Yb_train_batch = Y_binarized_train[train_idxs, :]
 
-            train_output = train_fn(X_train_batch, Yr_train_batch, Yb_train_batch)
+            # train_output = train_fn(X_train_batch, Yr_train_batch, Yb_train_batch)
+            train_output = train_fn(train_idxs)
             batch_start  = batch_start + batch_size
             
             train_loss.append(train_output[0])
@@ -212,7 +238,8 @@ def get_options(batchsize, nepochs, plotevery,
                 fn = 'params_{:>010d}'.format() # saving params
                 param_values = get_all_param_values(l_output)
                 param_norm   = np.linalg.norm(np.hstack([np.asarray(param).flatten() for param in param_values]))
-                gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
+                # gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
+                gradients = get_grad(train_idxs)
                 gradient_norm = np.linalg.norm(np.hstack([np.asarray(gradient).flatten() for gradient in gradients]))
                 logger.debug("Epoch : {:0>4}  minibatch {:0>3} Gradient Norm : {:>0.4}, Param Norm : {:>0.4} GradNorm/ParamNorm : {:>0.4} (Values from Prev. Minibatch) Train loss {}".format(epoch, minibatch, gradient_norm, param_norm, gradient_norm/param_norm,train_loss[-1]))
                 param_names  = [param.__str__() for param in get_all_params(l_output)]
@@ -235,12 +262,14 @@ def get_options(batchsize, nepochs, plotevery,
                 np.savez('Y_train_pred_{}.npz'.format(epoch), Y_train_pred = train_output[1])
 
 
-            gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
+            # gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
+            gradients = get_grad(train_idxs)
             gradient_norm = np.linalg.norm(np.hstack([np.asarray(gradient).flatten() for gradient in gradients]))
             logger.info("  Gradient Norm : {}, Param Norm : {} GradNorm/ParamNorm : {} ".format(gradient_norm, param_norm, gradient_norm/param_norm))
             logger.info("  Train loss {:>0.4}".format(np.mean(train_loss)))
             
-            test_loss, test_prediction = val_fn(X_test, Y_test, Y_binarized_test)
+            # test_loss, test_prediction = val_fn(X_test, Y_test, Y_binarized_test)
+            test_loss, test_prediction = val_fn()
             np.savez('Y_test_pred_{}.npz'.format(epoch), Y_test_pred = test_prediction)
             logger.info("  Test loss {}".format(test_loss))
             
