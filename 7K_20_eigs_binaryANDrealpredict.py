@@ -6,7 +6,7 @@ corresponding data.
 The coulomb.txt has a set of 7089 matrices each of dimensions 29x29
 The energies.txt is a matrix of 7089 rows and 20 columns.
 """
-
+import os,sys
 import numpy as np
 import pdb
 
@@ -107,10 +107,11 @@ def get_model():
     return model
 
 if __name__ == "__main__":
-    coulomb_path  = sys.argv[1]
-    energies_path = sys.argv[2]
-    X,Y = load_data("/m/home/home0/00/ghoshk1/data/Desktop/Thesis/data/7k_20_eigenvalues/coulomb.txt",
-                    "/m/home/home0/00/ghoshk1/data/Desktop/Thesis/data/7k_20_eigenvalues/energies.txt")
+    
+    data_path=sys.argv[1]
+
+    X,Y = load_data(data_path + os.sep + "coulomb.txt",
+                    data_path + os.sep + "energies.txt")
     Y, Y_mean, Y_std = preprocess_targets(Y)
     [X_train, X_test], [Y_train, Y_test], splits = get_data_splits(X,Y, splits=[90,10])
 
