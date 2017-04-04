@@ -172,6 +172,7 @@ def get_options(batchsize, nepochs, plotevery,
     #             train_set[0].size,train_set_labeled[0].size, 
     #             test_set[0].size, valid_set[0].size))
 
+    eigen_value_count = 20
 
     # Defining the model now. 
     th_coulomb      = T.ftensor4()
@@ -179,23 +180,27 @@ def get_options(batchsize, nepochs, plotevery,
     th_energies_bin = T.fmatrix()
     th_learningrate = T.fscalar()
 
-    l_input    = InputLayer(shape=(None, 1, 29,29),input_var=th_coulomb,   name="Input")
-    l_conv1    = Conv2DLayer(l_input,5,3, pad="same",                     name="conv1")
-    l_conv2    = Conv2DLayer(l_conv1,5,3, pad="same",                     name="conv2")
-    l_maxpool1 = MaxPool2DLayer(l_conv2, (2,2),                           name="maxpool1")
-    l_conv3    = Conv2DLayer(l_maxpool1, 5, 2, pad="same",                name="conv3")
-    l_maxpool2 = MaxPool2DLayer(l_conv3, (2,2),                           name="maxpool2")
-    l_conv4    = Conv2DLayer(l_maxpool2, 5, 2, pad="same",                name="conv4")
-    l_flatten  = FlattenLayer(l_conv4,                                    name="flatten")
-    l_realOut  = DenseLayer(l_flatten, num_units=20, nonlinearity=linear, name="realOut")
-    l_binOut   = DenseLayer(l_flatten, num_units=20, nonlinearity=sigmoid,name="binOut")
-    l_output   = ElemwiseMergeLayer([l_binOut, l_realOut], T.mul)
+    l_input    = InputLayer(shape=(None, 1, 29,29),input_var=th_coulomb,     name="Input")
+    l_input    = FlattenLayer(l_input,                                       name="FlattenInput")
+    l_pseudo_bin = DenseLayer(l_input, num_units=2000, nonlinearity=sigmoid, name="PseudoBinarized")
+    
+    l_h1 = []; l_h2 = []; l_realOut = []; l_binOut = [];
+
+    for branch_num in range(eigen_value_count):
+        l_h1.append(DenseLayer(l_pseudo_bin, num_units=1000, nonlinearity=rectify, name="hidden_1_%d" % branch_num))
+        l_h2.append(DenseLayer(l_h1[-1], num_units=400,  nonlinearity=rectify, name="hidden_2_%d" % branch_num))
+        l_realOut.append(DenseLayer(l_h2[-1],    num_units=1,    nonlinearity=linear,  name= "realOut_%d" % branch_num))
+        l_binOut.append(DenseLayer(l_h2[-1],num_units=1, nonlinearity=sigmoid,name="binOut"))
+        
+    l_realOut_cat = ConcatLayer(l_realOut, name="real_concat") 
+    l_binOut_cat  = ConcatLayer(l_binOut,  name="bin_concat") 
+    l_output = ElemwiseMergeLayer([l_binOut_cat, l_realOut_cat], T.mul, name="final_output")
 
     energy_output = get_output(l_output)
-    binary_output = get_output(l_binOut)
+    binary_output = get_output(l_binOut_cat)
 
-    loss_real   = T.sum(abs(energy_output - th_energies))
-    loss_binary = T.sum(binary_crossentropy(binary_output, th_energies_bin))
+    loss_real   = T.mean(abs(energy_output - th_energies))
+    loss_binary = T.mean(binary_crossentropy(binary_output, th_energies_bin))
     loss = loss_real + loss_binary
     
     params = get_all_params(l_output)
@@ -222,7 +227,7 @@ def get_options(batchsize, nepochs, plotevery,
     
     with open(os.path.join(mydir, "data.txt"),"w") as f:
         script = app_name
-        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","script"]:
+        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","plotevery","script"]:
             f.write("{} : {}\n".format(elem, eval(elem)))
     
     train_loss_lowest = np.inf
@@ -232,17 +237,17 @@ def get_options(batchsize, nepochs, plotevery,
         batch_start = 0
         train_loss = []
 
-    if learningrate == None:
-        if epoch < 50:
-            learning_rate = 0.01
-        if epoch < 100:
-            learning_rate = 0.001
-        if epoch < 500:
-            learning_rate = 0.0001
-        if epoch < 1000:
-            learning_rate = 0.00001
-    else:
-        learning_rate = learningrate
+        if learningrate == None:
+            if epoch < 50:
+                learning_rate = 0.0001
+            elif epoch < 100:
+                learning_rate = 0.00001
+            elif epoch < 500:
+                learning_rate = 0.000001
+            else:
+                learning_rate = 0.0000001
+        else:
+            learning_rate = learningrate
 
         indices = np.random.permutation(datapoints)
         minibatches = int(datapoints/batch_size)
@@ -252,7 +257,7 @@ def get_options(batchsize, nepochs, plotevery,
             Yr_train_batch = Y_train[train_idxs,:]
             Yb_train_batch = Y_binarized_train[train_idxs, :]
 
-            train_output = train_fn(X_train_batch, Yr_train_batch, Yb_train_batch, learningrate)
+            train_output = train_fn(X_train_batch, Yr_train_batch, Yb_train_batch, learning_rate)
             batch_start  = batch_start + batch_size
             
             train_loss.append(train_output[0])
@@ -272,6 +277,7 @@ def get_options(batchsize, nepochs, plotevery,
                 if train_loss[-1] < train_loss_lowest:
                     train_loss_lowest = train_loss[-1]
                     np.savez('Y_train_pred_best.npz', Y_train_pred = train_output[1])
+                    logger.debug("Found the best training prediction (Y_train_pred_best) at %d epoch %d minibatch" % (epoch, minibatch))
                 if np.isnan(gradient_norm):
                     pdb.set_trace()
                 
@@ -291,11 +297,12 @@ def get_options(batchsize, nepochs, plotevery,
                 if mean_train_loss < train_loss_lowest:
                     train_loss_lowest = mean_train_loss
                     np.savez('Y_train_pred_best.npz', Y_train_pred = train_output[1])
+                    logger.info("Found the best training prediction (Y_train_pred_best) at %d epoch" % epoch)
 
 
             gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
             gradient_norm = np.linalg.norm(np.hstack([gradient.flatten() for gradient in gradients]))
-            logger.info("  Gradient Norm : {}, Param Norm : {} GradNorm/ParamNorm : {} ".format(gradient_norm, param_norm, gradient_norm/param_norm))
+            logger.info("  Gradient Norm : {:>0.4}, Param Norm : {:>0.4} GradNorm/ParamNorm : {:>0.4} ".format(gradient_norm, param_norm, gradient_norm/param_norm))
             logger.info("  Train loss {:>0.4}".format(np.mean(train_loss)))
             
             test_loss, test_prediction = val_fn(X_test, Y_test, Y_binarized_test)
@@ -304,6 +311,7 @@ def get_options(batchsize, nepochs, plotevery,
             if test_loss < test_loss_lowest:
                test_loss_lowest = test_loss 
                np.savez('Y_test_pred_best.npz', Y_test_pred = test_prediction)           
+               logger.info("Found the best test prediction (Y_test_pred_best) at %d epoch" % epoch)
 if __name__ == "__main__":
     get_options()
 
