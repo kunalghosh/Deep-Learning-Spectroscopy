@@ -183,11 +183,11 @@ def get_options(batchsize, nepochs, plotevery,
 
     l_input    = InputLayer(shape=(None, 29,29),input_var=th_coulomb,     name="Input")
     l_input    = FlattenLayer(l_input,                                       name="FlattenInput")
-    l_pseudo_bin = DenseLayer(l_input, num_units=2000, nonlinearity=sigmoid, name="PseudoBinarized")
     
-    l_h1 = []; l_h2 = []; l_realOut = []; l_binOut = [];
+    l_pseudo_bin = []; l_h1 = []; l_h2 = []; l_realOut = []; l_binOut = [];
 
     for branch_num in range(eigen_value_count):
+        l_pseudo_bin.append(DenseLayer(l_input, num_units=2000, nonlinearity=sigmoid, name="PseudoBinarized_%d" % branch_num))
         l_h1.append(DenseLayer(l_pseudo_bin, num_units=1000, nonlinearity=rectify, name="hidden_1_%d" % branch_num))
         l_h2.append(DenseLayer(l_h1[-1], num_units=400,  nonlinearity=rectify, name="hidden_2_%d" % branch_num))
         l_realOut.append(DenseLayer(l_h2[-1],    num_units=1,    nonlinearity=linear,  name= "realOut_%d" % branch_num))
