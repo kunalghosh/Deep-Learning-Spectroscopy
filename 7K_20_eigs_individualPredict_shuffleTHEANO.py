@@ -36,12 +36,13 @@ from lasagne.objectives import squared_error, binary_crossentropy
 from lasagne.updates import adam, sgd, momentum, nesterov_momentum
 
 from util import get_logger
+from coulomb_shuffle import coulomb_shuffle
 
 logger = None
 
 def load_data(coulomb_txtfile, energies_txtfile):
     Y = np.loadtxt(energies_txtfile).astype(np.float32) # Note that here y_i is a vector of 20 values
-    X = np.loadtxt(coulomb_txtfile).reshape((-1,1,29,29)).astype(np.float32)
+    X = np.loadtxt(coulomb_txtfile).reshape((-1,29,29)).astype(np.float32)
     return X,Y
 
 def preprocess_targets(Y, binary_threshold=10**-5, zero_mean=True, unit_var=True):
@@ -175,12 +176,12 @@ def get_options(batchsize, nepochs, plotevery,
     eigen_value_count = 20
 
     # Defining the model now. 
-    th_coulomb      = T.ftensor4()
+    th_coulomb      = T.ftensor3()
     th_energies     = T.fmatrix()
     th_energies_bin = T.fmatrix()
     th_learningrate = T.fscalar()
 
-    l_input    = InputLayer(shape=(None, 1, 29,29),input_var=th_coulomb,     name="Input")
+    l_input    = InputLayer(shape=(None, 29,29),input_var=th_coulomb,     name="Input")
     l_input    = FlattenLayer(l_input,                                       name="FlattenInput")
     l_pseudo_bin = DenseLayer(l_input, num_units=2000, nonlinearity=sigmoid, name="PseudoBinarized")
     
@@ -233,7 +234,7 @@ def get_options(batchsize, nepochs, plotevery,
     train_loss_lowest = np.inf
     test_loss_lowest = np.inf
 
-    # row_norms = np.linalg.norm(X_train, axis=-1)
+    row_norms = np.linalg.norm(X_train, axis=-1)
     for epoch in range(epochs):
         batch_start = 0
         train_loss = []
@@ -252,7 +253,9 @@ def get_options(batchsize, nepochs, plotevery,
 
         indices = np.random.permutation(datapoints)
         minibatches = int(datapoints/batch_size)
-        # X_train = coulomb_shuffle(X_train)
+        logger.debug("Shuffling Started.")
+        X_train = coulomb_shuffle(X_train, row_norms)
+        logger.debug("Shuffling complete.")
         for minibatch in range(minibatches):
             train_idxs     = indices[batch_start:batch_start+batch_size]
             X_train_batch  = X_train[train_idxs,:]
