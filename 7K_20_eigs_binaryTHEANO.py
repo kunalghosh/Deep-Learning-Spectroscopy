@@ -127,10 +127,11 @@ def get_options(batchsize, nepochs, plotevery,
     [X_train, X_test], [Y_train, Y_test], splits = get_data_splits(X,Y, splits=[90,10])
     [Y_binarized_train, Y_binarized_test] = np.split(Y_binarized,splits)[:-1]
 
-    np.savez('Y_vals.npz', Y_train=Y_train, Y_test=Y_test, Y_binarized_test=Y_binarized_test, Y_binarized_train=Y_binarized_train)
+    np.savez('Y_vals.npz', Y_train=Y_train, Y_test=Y_test, Y_binarized_test=Y_binarized_test, Y_binarized_train=Y_binarized_train, Y_mean=Y_mean, Y_std=Y_std)
     np.savez('X_vals.npz', X_train=X_train, X_test=X_test)
 
     dataDim = X.shape[1:]
+    pdb.set_trace()
  
     # TODO !!!!I am here
     # print("Train set size {}, Train set (labelled) size {}, Test set size {}," +
