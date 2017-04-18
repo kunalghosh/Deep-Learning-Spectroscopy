@@ -249,7 +249,18 @@ def get_options(batchsize, nepochs, plotevery,
             else:
                 learning_rate = 0.0000001
         else:
-            learning_rate = learningrate
+            learning_rate = eval(learningrate)
+            if isinstance(learning_rate, float):
+                pass
+            elif isinstance(learning_rate, list):
+                for epch, lrate in learning_rate:
+                    # ensure that last epoch is float("inf")
+                    if epoch <= epch:
+                        learning_rate = lrate
+                        break
+            else:
+                raise RuntimeError("Invalid learning rate.Either \n 1) Float or 2) List [[epch, lrate],...,[float('inf'), lrate]]") 
+        logger.debug("learning rate {}".format(learning_rate))
 
         indices = np.random.permutation(datapoints)
         minibatches = int(datapoints/batch_size)
