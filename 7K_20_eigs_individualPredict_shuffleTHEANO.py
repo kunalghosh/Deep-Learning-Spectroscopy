@@ -124,11 +124,13 @@ get_optimizer = {'adam':adam, 'sgd':sgd, 'momentum':momentum, 'nesterov_momentum
 @click.option('--optimizer', default='adam', help="The gradient update algorithm to use among {}".format(get_optimizer.keys()))
 @click.option('--yzeromean', is_flag=True, help="Set this flag to make Y zero mean.")
 @click.option('--yunitvar', is_flag=True, help="Set this flag to make Y unit variance.")
+@click.option('--noshuffle', is_flag=True, help="Set this flag to disable shuffling of coulomb matrices")
+@click.option('--nobatchnorm', is_flag=True, help="Set this flag to disable batch normalization layers.")
 @click.argument('datadir', type=click.Path(exists=True)) # help="The folder where energies.txt and coulomb.txt can be found"
 @click.argument('outputdir', type=click.Path(exists=True), default=os.getcwd()) # help="Folder where all the exeperiment artifacts are stored (Default: PWD)"
 def get_options(batchsize, nepochs, plotevery, 
         learningrate, normalizegrads, 
-        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, datadir, outputdir):
+        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, noshuffle, nobatchnorm, datadir, outputdir):
 
     global batch_size;  batch_size  = batchsize
     global epochs;      epochs      = nepochs
@@ -184,6 +186,8 @@ def get_options(batchsize, nepochs, plotevery,
     l_input    = InputLayer(shape=(None, 29,29),input_var=th_coulomb,     name="Input")
     l_input    = FlattenLayer(l_input,                                       name="FlattenInput")
     l_pseudo_bin = DenseLayer(l_input, num_units=2000, nonlinearity=sigmoid, name="PseudoBinarized")
+    if not nobatchnorm:
+        l_pseudo_bin = batch_norm(l_pseudo_bin)
     
     l_h1 = []; l_h2 = []; l_realOut = []; l_binOut = [];
 
@@ -197,14 +201,22 @@ def get_options(batchsize, nepochs, plotevery,
     l_binOut_cat  = ConcatLayer(l_binOut,  name="bin_concat") 
     l_output = ElemwiseMergeLayer([l_binOut_cat, l_realOut_cat], T.mul, name="final_output")
 
-    energy_output = get_output(l_output)
-    binary_output = get_output(l_binOut_cat)
+    energy_output = get_output(l_output, deterministic=False)
+    binary_output = get_output(l_binOut_cat, deterministic=False)
+    # get deterministic output for validation
+    energy_output_det = get_output(l_output, deterministic=True)
+    binary_output_det = get_output(l_binOut_cat, deterministic=True)
 
     loss_real   = T.mean(abs(energy_output - th_energies))
     loss_binary = T.mean(binary_crossentropy(binary_output, th_energies_bin))
     loss = loss_real + loss_binary
+
+    # get loss output for validation
+    loss_real_det = T.mean(abs(energy_output_det - th_energies))
+    loss_binary_det = T.mean(binary_crossentropy(binary_output_det, th_energies_bin))
+    loss_det = loss_real_det + loss_binary_det
     
-    params = get_all_params(l_output)
+    params = get_all_params(l_output, trainable=True)
     grad = T.grad(loss, params)
 
     if normalizegrads is not None:
@@ -221,14 +233,14 @@ def get_options(batchsize, nepochs, plotevery,
     get_grad  = theano.function([th_coulomb, th_energies, th_energies_bin], grad)
     # get_updates = theano.function([th_data, th_labl], [updates.values()])
     # val_fn    = theano.function([th_coulomb, th_energies, th_energies_bin], [loss, energy_output], updates=updates, allow_input_downcast=True)
-    val_fn    = theano.function([th_coulomb, th_energies, th_energies_bin], [loss, energy_output], allow_input_downcast=True)
+    val_fn    = theano.function([th_coulomb, th_energies, th_energies_bin], [loss_det, energy_output_det], allow_input_downcast=True)
     
     datapoints = len(X_train)
     print("datapoints = %d"%datapoints)
     
     with open(os.path.join(mydir, "data.txt"),"w") as f:
         script = app_name
-        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","plotevery","script"]:
+        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","plotevery","noshuffle","nobatchnorm","script","datadir"]:
             f.write("{} : {}\n".format(elem, eval(elem)))
     
     train_loss_lowest = np.inf
@@ -264,9 +276,11 @@ def get_options(batchsize, nepochs, plotevery,
 
         indices = np.random.permutation(datapoints)
         minibatches = int(datapoints/batch_size)
-        logger.debug("Shuffling Started.")
-        X_train = coulomb_shuffle(X_train, row_norms)
-        logger.debug("Shuffling complete.")
+        if not noshuffle:
+            logger.debug("Shuffling Started.")
+            X_train = coulomb_shuffle(X_train, row_norms)
+            logger.debug("Shuffling complete.")
+
         for minibatch in range(minibatches):
             train_idxs     = indices[batch_start:batch_start+batch_size]
             X_train_batch  = X_train[train_idxs,:]
