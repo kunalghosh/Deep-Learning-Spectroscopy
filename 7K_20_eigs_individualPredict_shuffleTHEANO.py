@@ -40,9 +40,9 @@ from coulomb_shuffle import coulomb_shuffle
 
 logger = None
 
-def load_data(coulomb_txtfile, energies_txtfile):
+def load_data(coulomb_txtfile, energies_txtfile, w=29, h=29):
     Y = np.loadtxt(energies_txtfile).astype(np.float32) # Note that here y_i is a vector of 20 values
-    X = np.loadtxt(coulomb_txtfile).reshape((-1,29,29)).astype(np.float32)
+    X = np.loadtxt(coulomb_txtfile).reshape((-1,w,h)).astype(np.float32)
     return X,Y
 
 def preprocess_targets(Y, binary_threshold=10**-5, zero_mean=True, unit_var=True):
@@ -126,11 +126,12 @@ get_optimizer = {'adam':adam, 'sgd':sgd, 'momentum':momentum, 'nesterov_momentum
 @click.option('--yunitvar', is_flag=True, help="Set this flag to make Y unit variance.")
 @click.option('--noshuffle', is_flag=True, help="Set this flag to disable shuffling of coulomb matrices")
 @click.option('--nobatchnorm', is_flag=True, help="Set this flag to disable batch normalization layers.")
+@click.option('--coulombdim', default=(29,29), type=(int,int), help="The dimensions of the coulomb matrix. They are typically square but here input both width and height.")
 @click.argument('datadir', type=click.Path(exists=True)) # help="The folder where energies.txt and coulomb.txt can be found"
 @click.argument('outputdir', type=click.Path(exists=True), default=os.getcwd()) # help="Folder where all the exeperiment artifacts are stored (Default: PWD)"
 def get_options(batchsize, nepochs, plotevery, 
         learningrate, normalizegrads, 
-        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, noshuffle, nobatchnorm, datadir, outputdir):
+        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, noshuffle, nobatchnorm, coulombdim, datadir, outputdir):
 
     global batch_size;  batch_size  = batchsize
     global epochs;      epochs      = nepochs
@@ -147,8 +148,11 @@ def get_options(batchsize, nepochs, plotevery,
     logger = get_logger(app_name=app_name, logfolder=mydir)
 
     # Load dataset
+    w,h = coulombdim
     X,Y = load_data(datadir + os.sep + "coulomb.txt",
-                    datadir + os.sep + "energies.txt")
+                    datadir + os.sep + "energies.txt", 
+                    w = w,
+                    h = h)
     Y, Y_mean, Y_std, Y_binarized = preprocess_targets(Y, zero_mean=yzeromean, unit_var=yunitvar)
     [X_train, X_test], [Y_train, Y_test], splits = get_data_splits(X,Y, splits=[90,10])
     [Y_binarized_train, Y_binarized_test] = np.split(Y_binarized,splits)[:-1]
@@ -157,6 +161,7 @@ def get_options(batchsize, nepochs, plotevery,
     np.savez('X_vals.npz', X_train=X_train, X_test=X_test)
 
     dataDim = X.shape[1:]
+    assert dataDim == (w,h), "The dimensions of data you have passed {} and the ones after loading datafile {} don't match !".format((w,h), dataDim)
     outputDim = Y.shape[1]
     datapoints = len(X_train)
     print("datapoints = %d" % datapoints)
@@ -175,7 +180,7 @@ def get_options(batchsize, nepochs, plotevery,
     #             train_set[0].size,train_set_labeled[0].size, 
     #             test_set[0].size, valid_set[0].size))
 
-    eigen_value_count = 20
+    eigen_value_count = outputDim
 
     # Defining the model now. 
     th_coulomb      = T.ftensor3()
@@ -183,7 +188,7 @@ def get_options(batchsize, nepochs, plotevery,
     th_energies_bin = T.fmatrix()
     th_learningrate = T.fscalar()
 
-    l_input    = InputLayer(shape=(None, 29,29),input_var=th_coulomb,     name="Input")
+    l_input    = InputLayer(shape=(None, dataDim[0], dataDim[1]),input_var=th_coulomb,     name="Input")
     l_input    = FlattenLayer(l_input,                                       name="FlattenInput")
     l_pseudo_bin = DenseLayer(l_input, num_units=2000, nonlinearity=sigmoid, name="PseudoBinarized")
     if not nobatchnorm:

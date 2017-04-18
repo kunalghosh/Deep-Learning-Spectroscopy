@@ -50,8 +50,9 @@ Y_pred = Y_pred * Y_std + Y_mean
 Y_test = Y_test * Y_std + Y_mean
 
 if vis_type == "energies":
-    
-    for idx in range(20):
+
+    _, num_energies = Y_pred.shape
+    for idx in range(num_energies):
         
         _min = min([min(Y_pred[:,idx]),min(Y_test[:,idx])])
         _max = max([max(Y_pred[:,idx]),max(Y_test[:,idx])])
