@@ -245,7 +245,7 @@ def get_options(batchsize, nepochs, plotevery,
     
     with open(os.path.join(mydir, "data.txt"),"w") as f:
         script = app_name
-        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","plotevery","noshuffle","nobatchnorm","script","datadir"]:
+        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","plotevery","noshuffle","nobatchnorm","coulombdim","script","datadir"]:
             f.write("{} : {}\n".format(elem, eval(elem)))
     
     train_loss_lowest = np.inf
