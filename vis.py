@@ -72,37 +72,49 @@ if vis_type == "energies":
         # sns.plt.ylabel("Y_test [eV]")
         fig.savefig("{:0>2d}_testset_prediction.png".format(idx+1))
         plt.close()
-elif vis_type == "spectrum_mse":
+elif vis_type in ("spectrum_mse", "spectrum_mse_all"):
     """
     Plots spectrum with the best and the worst MSE
     """
     mse_values = np.mean((Y_pred-Y_test)**2, axis=1)
     # -- Plotting histogram
     plothist(mse_values,"Histogram of MSE (test set)","hist_mse.png") 
-    # -- end plotting histogram
-    min_mse_idx = np.argmin(mse_values)
-    max_mse_idx = np.argmax(mse_values)
     x_vals = np.linspace(-30,0,300)
-    #---- Plotting spectrum with lowest mse
-    plot_fig(min_mse_idx, title="Spectrum with Lowest MSE (= {:>0.4})".format(mse_values[min_mse_idx]), filename="min_mse_testset_prediction.png")
-    #---- Plotting spectrum with highest mse
-    plot_fig(max_mse_idx, title="Spectrum with Highest MSE (= {:>0.4})".format(mse_values[max_mse_idx]), filename="max_mse_testset_prediction.png")
+    # -- end plotting histogram
+    if vis_type == "spectrum_mse":
+        min_mse_idx = np.argmin(mse_values)
+        max_mse_idx = np.argmax(mse_values)
+        #---- Plotting spectrum with lowest mse
+        plot_fig(min_mse_idx, title="Spectrum with Lowest MSE (= {:>0.4})".format(mse_values[min_mse_idx]), filename="min_mse_testset_prediction.png")
+        #---- Plotting spectrum with highest mse
+        plot_fig(max_mse_idx, title="Spectrum with Highest MSE (= {:>0.4})".format(mse_values[max_mse_idx]), filename="max_mse_testset_prediction.png")
+    elif vis_type == "spectrum_mse_all":
+        sorted_idxs = np.argsort(mse_values)
+        zeros_to_pad = np.round(np.log10(len(mse_values))).astype(np.int32)
+        for position, sorted_idx in enumerate(sorted_idxs):
+            plot_fig(sorted_idx, title="Spectrum with MSE (= {:>0.4})".format(mse_values[sorted_idx]), filename=("mse_testset_prediction_{:0>%d}" % zeros_to_pad).format(position))
 
-elif vis_type == "spectrum_mae":
+elif vis_type in ("spectrum_mae", "spectrum_mae_all"):
     """
     Plots spectrum with the best and the worst MAE
     """
     mae_values = np.mean(np.abs(Y_pred-Y_test), axis=1)
     plothist(mae_values,"Histogram of MAE (test set)","hist_mae.png") 
-    min_mae_idx = np.argmin(mae_values)
-    max_mae_idx = np.argmax(mae_values)
     x_vals = np.linspace(-30,0,300)
-    #---- Plotting spectrum with lowest mae
-    plot_fig(min_mae_idx, title="Spectrum with Lowest MAE (= {:>0.4})".format(mae_values[min_mae_idx]), filename="min_mae.png")
-    #---- Plotting spectrum with highest mae
-    plot_fig(max_mae_idx, title="Spectrum with Highest MAE (= {:>0.4})".format(mae_values[max_mae_idx]), filename="max_mae.png")
+    if vis_type == "spectrum_mae":
+        min_mae_idx = np.argmin(mae_values)
+        max_mae_idx = np.argmax(mae_values)
+        #---- Plotting spectrum with lowest mae
+        plot_fig(min_mae_idx, title="Spectrum with Lowest MAE (= {:>0.4})".format(mae_values[min_mae_idx]), filename="min_mae_testset_prediction.png")
+        #---- Plotting spectrum with highest mae
+        plot_fig(max_mae_idx, title="Spectrum with Highest MAE (= {:>0.4})".format(mae_values[max_mae_idx]), filename="max_mae_testset_prediction.png")
+    elif vis_type == "spectrum_mae_all":
+        sorted_idxs = np.argsort(mae_values)
+        zeros_to_pad = np.round(np.log10(len(mae_values))).astype(np.int32)
+        for position, sorted_idx in enumerate(sorted_idxs):
+            plot_fig(sorted_idx, title="Spectrum with MAE (= {:>0.4})".format(mae_values[sorted_idx]), filename=("mae_testset_prediction_{:0>%d}" % zeros_to_pad).format(position))
 else:
-    print("Supported vis_types = {}".format(["energies", "spectrum_mae", "spectrum_mse"]))
+    print("Supported vis_types = {}".format(["energies", "spectrum_mae", "spectrum_mse", "spectrum_mae_all", "spectrum_mse_all"]))
 
 # saving the learning curve 
 print("Trying to generate the learning curve now.")
