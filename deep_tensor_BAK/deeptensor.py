@@ -37,12 +37,21 @@ path_to_xyz_file = sys.argv[1]
 try:
     path_to_targets_file = sys.argv[2]
     logger.info("Predicting targets {}".format(path_to_targets_file))
-except IndexError,e :
+except IndexError as e :
     # Predict free energies instead.
     path_to_targets_file = None
     logger.info("Predicting free energies [No targets file provided].")
 
-
+remove5koutliers = False
+try:
+    if "remove5koutliers" in sys.argv[3:]:
+        remove5koutliers = True
+        logger.info("REMOVING 5k outliers.")
+except IndexError as e :
+    pass
+finally:
+    if remove5koutliers is False:
+        logger.info("NOT Removing 5k outliers.")
 
 class SwitchLayer(lasagne.layers.Layer):
     """
@@ -168,6 +177,14 @@ def main():
         # We predict values in the targets file
         y = np.loadtxt(path_to_targets_file).astype(np.float32)
         values_to_predict = y.shape[1]
+
+    if remove5koutliers:
+        assert y.shape[1] == 16, "Y.shape[1] != 16. Remove 5k outliers only useful for energy files."
+        from get_idxs_to_keep import get_idxs_to_keep
+        idxs = get_idxs_to_keep(path_to_targets_file)
+        Z = Z[idxs,:]
+        D = D[idxs,:]
+        y = y[idxs,:]
 
     # Split data for test and training
     Z_train, Z_test, D_train, D_test, y_train, y_test = train_test_split(
