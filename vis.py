@@ -121,4 +121,4 @@ try:
     plt.savefig("learning_curves.png")
     plt.close()
 except Exception as e:
-    print("Couldn't generate learning curves : e")
+    print("Couldn't generate learning curves : {}".format(e))
