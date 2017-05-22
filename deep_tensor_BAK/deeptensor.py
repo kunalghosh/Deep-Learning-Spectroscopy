@@ -53,6 +53,17 @@ finally:
     if remove5koutliers is False:
         logger.info("NOT Removing 5k outliers.")
 
+mae_cost = False
+try:
+    if "mae_cost" in sys.argv[3:]:
+        mae_cost = True
+        logger.info("Using MAE as the training and test cost.")
+except IndexError as e:
+    pass
+finally:
+    if mae_cost is False:
+        logger.info("Using MSE as the training and test cost.")
+
 class SwitchLayer(lasagne.layers.Layer):
     """
     Layer contains a coefficient matrix.
@@ -175,7 +186,18 @@ def main():
 
     if path_to_targets_file is not None:
         # We predict values in the targets file
-        y = np.loadtxt(path_to_targets_file).astype(np.float32)
+        # the targets file could be a txt file or an npz file.
+        try:
+            # Try loading the file as a txt file.
+            y = np.loadtxt(path_to_targets_file).astype(np.float32)
+        except UnicodeDecodeError as e:
+            # Not a txt file, Try loading the file as an npz file.
+            data_target = np.load(path_to_targets_file)
+            assert len(data_target.files) == 1, "There appear to be more than one variable in the targets npz file: {}. There must be only one.".format(data_target.files)
+            key = data_target.files[0]
+            print("Using the target {} from the targets npz file.".format(key))
+            y = data_target[key]
+
         values_to_predict = y.shape[1]
 
     if remove5koutliers:
@@ -233,8 +255,16 @@ def main():
 
     out_train = lasagne.layers.get_output(l_out, {l_in_Z: sym_Z, l_in_D: sym_D}, deterministic=False)
     out_test = lasagne.layers.get_output(l_out, {l_in_Z: sym_Z, l_in_D: sym_D}, deterministic=True)
-    cost_train = T.mean(lasagne.objectives.squared_error(out_train, sym_y))
-    cost_test = T.mean(lasagne.objectives.squared_error(out_test, sym_y))
+    if mae_cost is True:
+        cost_train = T.mean(np.abs(out_train-sym_y))
+        cost_test = T.mean(np.abs(out_test-sym_y))
+        logger.info("Used MAE cost")
+    else:
+        cost_train = T.mean(lasagne.objectives.squared_error(out_train, sym_y))
+        cost_test = T.mean(lasagne.objectives.squared_error(out_test, sym_y))
+        logger.info("Used MSE cost")
+
+
     updates = lasagne.updates.adam(cost_train, params, learning_rate=sym_learn_rate)
 
 
@@ -255,7 +285,7 @@ def main():
             )
 
     # Define training parameters
-    batch_size = 64
+    batch_size = 200
     num_train_samples = Z_train.shape[0]
     num_train_batches = num_train_samples // batch_size
     max_epochs=10000
@@ -271,7 +301,8 @@ def main():
         D_train_perm = D_train[rand_perm]
         y_train_perm = y_train[rand_perm]
 
-        if epoch < 50:
+        if epoch < 100:
+        #if epoch < 50:
             learning_rate = 0.01
         elif epoch < 500:
             learning_rate = 0.001
@@ -290,7 +321,7 @@ def main():
                     )
         train_cost = train_cost / num_train_batches
 
-        if (epoch % 30) == 0:
+        if (epoch % 2) == 0:
             y_pred = f_eval_test(Z_train, D_train)
             train_errors = y_pred-y_train
             y_pred = f_eval_test(Z_test, D_test)
@@ -316,7 +347,7 @@ def main():
                 logger.info("Found best test RMSE : {}".format(lowest_test_rmse))
                 np.savez("Y_test_pred_best_rmse.npz", Y_test_pred = y_pred)
 
-        if (epoch % 2) == 0:
+        #if (epoch % 2) == 0:
             test_cost = f_test(Z_test, D_test, y_test)
             end_time = timeit.default_timer()
 
