@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 from os import path
@@ -9,11 +10,12 @@ import numpy as np
 import lasagne
 import theano.tensor as T
 import theano
-from utils import load_qm7b_data, load_oqmd_data
+from utils import load_qm7b_data, load_oqmd_data, feature_expand
 from sklearn.model_selection import train_test_split
 from datetime import datetime
 sys.path.append(path.dirname(path.dirname(path.abspath(__file__))))
 from util import get_logger
+from dtnn_layers import SwitchLayer, MaskLayer, SumMaskedLayer, RecurrentLayer
 
 theano.config.floatX = 'float32'
 
@@ -23,10 +25,19 @@ os.makedirs(mydir)
 os.chdir(mydir)
 os.mkdir("results")
 
-app_name = sys.argv[0]
+app_name=""
+try:
+    app_name = sys.argv[0]
+except IndexError as e:
+    app_name="DeepTensor"
+
 logger = get_logger(app_name=app_name, logfolder=mydir)
 
-path_to_xyz_file = sys.argv[1]
+path_to_xyz_file = ""
+try:
+    path_to_xyz_file = sys.argv[1]
+except IndexError as e:
+    logger.critical("PATH TO XYZ FILE NOT DEFINED !!!")
 
 # The following targets file could be
 # 16 properties or 300 values of the spectrum.
@@ -64,108 +75,18 @@ finally:
     if mae_cost is False:
         logger.info("Using MSE as the training and test cost.")
 
-class SwitchLayer(lasagne.layers.Layer):
-    """
-    Layer contains a coefficient matrix.
-    Rows from this matrix are returned using the input as row indices.
-    The output array thus has an additional dimension.
+num_dist_basis = 40
+try:
+    if "num_dist_basis" in sys.argv[3:]:
+        # next entry is # of basis
+        num_basis_idx = sys.argv.index("num_dist_basis")+1
+        num_dist_basis = int(sys.argv[num_basis_idx])
+except IndexError as e:
+    # There are no [3:] indices in sys.argv
+    pass
+finally:
+    logger.info("Number of distance basis: %d" % num_dist_basis)
 
-    Parameters
-    ----------
-    incoming : :class: `Layer` instances
-
-    num_options : int or T.scalar
-        Number of rows in the coefficient matrix
-
-    out_len : int or T.scalar
-        Number of columns in coefficient matrix
-    """
-    def __init__(self, incoming, num_options, out_len, W=lasagne.init.Uniform(1), **kwargs):
-        super(SwitchLayer, self).__init__(incoming, **kwargs)
-        num_inputs = self.input_shape[1]
-        self.out_len = out_len
-        self.C = self.add_param(W, (num_options, self.out_len), name='C')
-
-    def get_output_for(self, input, **kwargs):
-        return self.C[input,:]
-
-    def get_output_shape_for(self, input_shape):
-        return (input_shape[0], input_shape[1], self.out_len)
-
-class MaskLayer(lasagne.layers.Layer):
-    def get_output_for(self, input, **kwargs):
-        return input>0
-
-class SumMaskedLayer(lasagne.layers.MergeLayer):
-    def __init__(self, var, mask, **kwargs):
-        super(SumMaskedLayer, self).__init__([var, mask], **kwargs)
-
-    def get_output_shape_for(self, input_shapes):
-        return input_shapes[0][0]
-
-    def get_output_for(self, input, **kwargs):
-        var, mask = input
-        return T.sum(var*mask, axis=1)
-
-class RecurrentLayer(lasagne.layers.MergeLayer):
-    """
-        Layer implements the iterative refinement of atom coefficients as
-        described in [SCHUTT].
-
-        References
-        ----------
-        [SCHUTT] Schutt, Kristof T., Farhad Arbabzadah, Stefan Chmiela, Klaus
-        R. Muller, and Alexandre Tkatchenko. 2017. "Quantum-Chemical Insights
-        from Deep Tensor Neural Networks." Nature Communications 8 (January):
-        13890.
-    """
-    def __init__(self, atomc, dist, atom_mask, num_hidden=60, num_passes=2, include_diagonal=False, nonlinearity=lasagne.nonlinearities.tanh, Wcf=lasagne.init.GlorotNormal(1.0), Wfc=lasagne.init.GlorotNormal(1.0), Wdf=lasagne.init.GlorotNormal(1.0), bcf=lasagne.init.Constant(0.0), bdf=lasagne.init.Constant(0.0), **kwargs):
-        super(RecurrentLayer, self).__init__([atomc, dist, atom_mask], **kwargs)
-        num_atoms = self.input_shapes[0][1]
-        c_len = self.input_shapes[0][2]
-        d_len = self.input_shapes[1][3]
-        self.Wcf = self.add_param(Wcf, (c_len, num_hidden), name="W_atom_c")
-        self.bcf = self.add_param(bcf, (num_hidden, ), name="b_atom_c")
-        self.Wdf = self.add_param(Wdf, (d_len, num_hidden), name="W_dist")
-        self.bdf = self.add_param(bdf, (num_hidden, ), name="b_dist")
-        self.Wfc = self.add_param(Wfc, (num_hidden, c_len), name="W_hidden_to_c")
-        self.num_passes = num_passes
-        self.nonlin = nonlinearity
-        if include_diagonal:
-            self.inv_eye_mask = None
-        else:
-            self.inv_eye_mask = (T.eye(num_atoms,num_atoms) < 1).dimshuffle("x",0,1,"x")
-
-
-    def get_output_shape_for(self, input_shapes):
-        return input_shapes[0]
-
-    def get_output_for(self, input, **kwargs):
-        atom_c, dist, atom_mask = input
-
-        c = atom_c
-
-        for i in range(self.num_passes):
-            # Contribution from atoms C
-            # c has dim (sample, atom_i, feature)
-            #   dimshuffle makes it broadcastable as (sample, 1, atom_j, feature)
-            term1 = (T.dot(c.dimshuffle(0,"x",1,2), self.Wcf) + self.bcf)
-            # Contribution from distances
-            # dist has dim (sample, atom_i, atom_j, gaussian_expansion)
-            term2 = T.dot(dist, self.Wdf) + self.bdf
-            V = self.nonlin(T.dot(term1*term2, self.Wfc))
-            # V has dim (sample, atom_i, atom_j, feature)
-            # Atom mask zeroes out contribution from missing atoms
-            # inv_eye_mask zeroes out contribution from diagonal V_{i,i}
-            if self.inv_eye_mask is None:
-                masked_V = V*atom_mask.dimshuffle(0,"x",1,"x")
-            else:
-                masked_V = V*atom_mask.dimshuffle(0,"x",1,"x")*self.inv_eye_mask
-            Vsum = T.sum(masked_V, axis=2)
-            # Vsum has dim (sample, atom_i, feature)
-            c = c + Vsum
-
-        return c
 
 
 def main():
@@ -173,14 +94,17 @@ def main():
     np.random.seed(1)
 
     # Define model parameters
-    num_dist_basis = 40
+    # num_dist_basis = 40 # defined at the top
     c_len = 30
     num_hidden_neurons = 60
     num_interaction_passes = 2
     values_to_predict = 1
 
     # Load data
-    Z, D, y, num_species = load_qm7b_data(num_dist_basis, dtype=theano.config.floatX, xyz_file=path_to_xyz_file)
+    Z, D, y, num_species = load_qm7b_data(num_dist_basis, dtype=theano.config.floatX,
+                                             xyz_file=path_to_xyz_file,expand_features=False)
+    # NOTE!!!  D is not feature_expanded expand_features = False
+
     #Z, D, y, num_species = load_oqmd_data(num_dist_basis, dtype=theano.config.floatX, filter_query="natoms<10,computation=standard")
     max_mol_size = Z.shape[1]
 
@@ -190,13 +114,15 @@ def main():
         try:
             # Try loading the file as a txt file.
             y = np.loadtxt(path_to_targets_file).astype(np.float32)
-        except UnicodeDecodeError as e:
+        except (ValueError,UnicodeDecodeError) as e:
             # Not a txt file, Try loading the file as an npz file.
+            # UnicodeDecodeError in python3.6 NumPy (1.11.3)
+            # ValueError in python2.7 NumPy (1.12.1)
             data_target = np.load(path_to_targets_file)
             assert len(data_target.files) == 1, "There appear to be more than one variable in the targets npz file: {}. There must be only one.".format(data_target.files)
             key = data_target.files[0]
-            print("Using the target {} from the targets npz file.".format(key))
-            y = data_target[key]
+            logger.info("Using the target {} from the targets npz file.".format(key))
+            y = data_target[key].astype(np.float32)
 
         values_to_predict = y.shape[1]
 
@@ -210,8 +136,12 @@ def main():
 
     # Split data for test and training
     Z_train, Z_test, D_train, D_test, y_train, y_test = train_test_split(
-            Z, D, y, test_size=0.2, random_state=0)
+            Z, D, y, test_size=0.1, random_state=0)
 
+    Z_test, Z_val, D_test, D_val, y_test, y_val = train_test_split(
+            Z_test, D_test, y_test, test_size=0.5, random_state=0)
+
+    print([len(_) for _ in (y_train,y_val,y_test)])
     # Compute mean and standard deviation of per-atom-energy
     Z_train_non_zero = np.count_nonzero(Z_train, axis=1)
 
@@ -221,8 +151,8 @@ def main():
     Estd = np.std(y_train / Z_train_non_zero, axis=0) # y values originally were free energies, they would be more when there are more atoms in the molecule, hence division scales them to be energy per atom.
     Emean = np.mean(y_train / Z_train_non_zero, axis=0) # axis needs to be specified so that we get mean and std per energy/spectrum value (i.e. dimension in y) doesn't affect when y just a scalar, i.e. free energy
 
-    np.savez("X_vals.npz", Z_train=Z_train, Z_test=Z_test, D_train=D_train, D_test=D_test)
-    np.savez("Y_vals.npz", Y_test=y_test, Y_train=y_train, Y_mean=Emean, Y_std=Estd)
+    np.savez("X_vals.npz", Z_train=Z_train, Z_test=Z_test, Z_val=Z_val,D_train=D_train, D_test=D_test, D_val=D_val)
+    np.savez("Y_vals.npz", Y_test=y_test, Y_train=y_train, Y_val=y_val, Y_mean=Emean, Y_std=Estd)
 
     sym_Z = T.imatrix()
     sym_D = T.tensor4()
@@ -285,7 +215,7 @@ def main():
             )
 
     # Define training parameters
-    batch_size = 200
+    batch_size = 100
     num_train_samples = Z_train.shape[0]
     num_train_batches = num_train_samples // batch_size
     max_epochs=10000
@@ -293,6 +223,17 @@ def main():
 
     lowest_test_mae = np.inf
     lowest_test_rmse = np.inf
+    mu_max = None#np.max(D_train)+1
+    # saving other variables for evaluating the model later.
+    np.savez("results/hyperparams.npz", max_mol_size=max_mol_size, 
+            values_to_predict=values_to_predict, Estd=Estd, Emean=Emean,
+            c_len=c_len, num_hidden_neurons=num_hidden_neurons,
+            num_interaction_passes=num_interaction_passes,
+            num_species = num_species,
+            num_dist_basis = num_dist_basis, mu_max=mu_max)
+
+    D_val_fe = feature_expand(D_val, num_dist_basis, mu_max=mu_max)
+    D_test_fe = feature_expand(D_test, num_dist_basis,mu_max=mu_max)
 
     for epoch in range(max_epochs):
         # Randomly permute training data
@@ -315,26 +256,42 @@ def main():
         for batch in range(num_train_batches):
             train_cost += f_train(
                     Z_train_perm[batch*batch_size:((batch+1)*batch_size)],
-                    D_train_perm[batch*batch_size:((batch+1)*batch_size)],
+                    feature_expand(D_train_perm[batch*batch_size:((batch+1)*batch_size)], num_dist_basis, mu_max=mu_max),
                     y_train_perm[batch*batch_size:((batch+1)*batch_size)],
                     learning_rate
                     )
+            #print("miniBatch %d of %d done." % (batch, num_train_batches))
         train_cost = train_cost / num_train_batches
 
         if (epoch % 2) == 0:
-            y_pred = f_eval_test(Z_train, D_train)
-            train_errors = y_pred-y_train
-            y_pred = f_eval_test(Z_test, D_test)
+            # D_train_fe = feature_expand(D_train, num_dist_basis)
+            # y_pred = f_eval_test(Z_train, D_train_fe)
+            # train_errors = y_pred-y_train
+            # del D_train_fe
+            # gc.collect()
+
+            y_pred = f_eval_test(Z_val, D_val_fe)
+            val_errors = y_pred-y_val
+            # del D_val_fe
+            # gc.collect()
+            train_errors = val_errors 
+
+            y_pred = f_eval_test(Z_test, D_test_fe)
             test_errors = y_pred-y_test
-            logger.info("TRAIN MAE:  %5.2f kcal/mol TEST MAE:  %5.2f kcal/mol" %
+            test_cost = f_test(Z_test, D_test_fe, y_test)
+            # del D_test_fe
+            # gc.collect()
+
+            #logger.info("TRAIN MAE:  %5.2f kcal/mol TEST MAE:  %5.2f kcal/mol" %
+            logger.info("VAL MAE:  %5.2f kcal/mol TEST MAE:  %5.2f kcal/mol" %
                     (np.abs(train_errors).mean(), np.abs(test_errors).mean()))
-            logger.info("TRAIN RMSE: %5.2f kcal/mol TEST RMSE: %5.2f kcal/mol" %
+            #logger.info("TRAIN RMSE: %5.2f kcal/mol TEST RMSE: %5.2f kcal/mol" %
+            logger.info("VAL RMSE: %5.2f kcal/mol TEST RMSE: %5.2f kcal/mol" %
                     (np.sqrt(np.square(train_errors).mean()), np.sqrt(np.square(test_errors).mean())))
 
             all_params = lasagne.layers.get_all_param_values(l_out)
             with gzip.open('results/model_epoch%d.pkl.gz' % (epoch), 'wb') as f:
                 pickle.dump(all_params, f, protocol=pickle.HIGHEST_PROTOCOL)
-
             new_test_mae = np.abs(test_errors).mean()
             if  new_test_mae < lowest_test_mae:
                 lowest_test_mae = new_test_mae
@@ -348,7 +305,7 @@ def main():
                 np.savez("Y_test_pred_best_rmse.npz", Y_test_pred = y_pred)
 
         #if (epoch % 2) == 0:
-            test_cost = f_test(Z_test, D_test, y_test)
+            # test_cost = f_test(Z_test, D_test, y_test)
             end_time = timeit.default_timer()
 
             logger.debug("Time %4.1f, Epoch %4d, train_cost=%5g, test_error=%5g" % (end_time - start_time, epoch, np.sqrt(train_cost), np.sqrt(test_cost)))

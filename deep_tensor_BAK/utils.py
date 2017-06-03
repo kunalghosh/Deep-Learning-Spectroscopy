@@ -122,19 +122,24 @@ def load_oqmd_data(num_dist_basis, dtype=float, cutoff=2.0, filter_query=None):
                     D[i_mol, jj, ii, :] += d_expand
     return Z, D, y, len(all_species)
 
-def feature_expand(X, num_basis):
+def feature_expand(X, num_basis,mu_max=None):
     """ Expand distance matrices in uniform grid of Gaussians """
 
     mu_min = -1
     step = 0.2
     sigma = step
+    if mu_max is not None:
+        step = (mu_max - mu_min)/num_basis
+        sigma = step
+
+    #print("feature_expand step = ", step)
     k = np.arange(num_basis, dtype=X.dtype)
 
     X = np.expand_dims(X, -1)
 
     return np.exp( -((X-(mu_min+k*step))**2.0)/(2.0*sigma**2.0))
 
-def load_qm7b_data(num_dist_basis, dtype=float, xyz_file="../qm7b.xyz"):
+def load_qm7b_data(num_dist_basis, dtype=float, xyz_file="../qm7b.xyz", expand_features=True):
     """ Returns tuple (Z, D, y, num_species)
     where
         Z is a matrix, each row in Z corresponds to a molecule and the elements
@@ -169,7 +174,8 @@ def load_qm7b_data(num_dist_basis, dtype=float, xyz_file="../qm7b.xyz"):
             dist = np.linalg.norm(desc.coord[ii]-desc.coord[jj])
             D[i,ii,jj] = D[i,jj,ii] = dist
 
-    return Z, feature_expand(D, num_dist_basis), y, len(all_species)
+    return Z, feature_expand(D, num_dist_basis) if expand_features is True else D,\
+            y, len(all_species)
 
 if __name__ == "__main__":
     # desc = load_xyz_file("qm7b.xyz")
