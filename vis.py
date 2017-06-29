@@ -81,7 +81,7 @@ elif vis_type in ("spectrum_mse", "spectrum_mse_all"):
     """
     Plots spectrum with the best and the worst MSE
     """
-    mse_values = np.mean((Y_pred-Y_test)**2, axis=1)
+    mse_values = np.sqrt(np.mean((Y_pred-Y_test)**2, axis=1))
     # -- Plotting histogram
     plothist(mse_values,"Histogram of MSE (test set)","hist_mse.png") 
     x_vals = np.linspace(-30,0,300)
