@@ -12,7 +12,8 @@ sns.set(style="white", color_codes=True)
 from plot_learn_curves import get_learn_curve_data
 
 vis_type = sys.argv[1]
-dump_dir = sys.argv[2]
+needs_shift_scale = sys.argv[2] # "no_shift_scale" to disable
+dump_dir = sys.argv[3]
 
 os.chdir(dump_dir)
 
@@ -46,6 +47,10 @@ Y_pred = np.load("Y_test_pred_best.npz")["Y_test_pred"]
 Y_test = np.load("Y_vals.npz")["Y_test"]
 Y_mean = np.load("Y_vals.npz")["Y_mean"]
 Y_std = np.load("Y_vals.npz")["Y_std"]
+if needs_shift_scale == "no_shift_scale":
+    Y_mean = np.zeros_like(Y_mean)
+    Y_std  = np.ones_like(Y_std)
+    print("No, shift and scale applied")
 Y_pred = Y_pred * Y_std + Y_mean
 Y_test = Y_test * Y_std + Y_mean
 
