@@ -126,12 +126,13 @@ get_optimizer = {'adam':adam, 'sgd':sgd, 'momentum':momentum, 'nesterov_momentum
 @click.option('--yunitvar', is_flag=True, help="Set this flag to make Y unit variance.")
 @click.option('--noshuffle', is_flag=True, help="Set this flag to disable shuffling of coulomb matrices")
 @click.option('--nobatchnorm', is_flag=True, help="Set this flag to disable batch normalization layers.")
+@click.option('--remove5koutliers', is_flag=True, help="Set this flag to remove entries having -10000.000 in the 16th col of energies in 5k dataset. [only makes sense when predicting energies with 5k dataset]")
 @click.option('--coulombdim', default=(29,29), type=(int,int), help="The dimensions of the coulomb matrix. They are typically square but here input both width and height.")
 @click.argument('datadir', type=click.Path(exists=True)) # help="The folder where energies.txt and coulomb.txt can be found"
 @click.argument('outputdir', type=click.Path(exists=True), default=os.getcwd()) # help="Folder where all the exeperiment artifacts are stored (Default: PWD)"
 def get_options(batchsize, nepochs, plotevery, 
         learningrate, normalizegrads, 
-        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, noshuffle, nobatchnorm, coulombdim, datadir, outputdir):
+        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, noshuffle, nobatchnorm, remove5koutliers, coulombdim, datadir, outputdir):
 
     global batch_size;  batch_size  = batchsize
     global epochs;      epochs      = nepochs
@@ -153,6 +154,14 @@ def get_options(batchsize, nepochs, plotevery,
                     datadir + os.sep + "energies.txt",
                     w = w,
                     h = h)
+
+    if remove5koutliers:
+        from get_idxs_to_keep import get_idxs_to_keep
+        idxs = get_idxs_to_keep(datadir + os.sep + "energies.txt")
+        X = X[idxs,:]
+        Y = Y[idxs,:]
+        logger.info("Removing 5k outliers.")
+
     Y, Y_mean, Y_std, Y_binarized = preprocess_targets(Y, zero_mean=yzeromean, unit_var=yunitvar)
     [X_train, X_test], [Y_train, Y_test], splits = get_data_splits(X,Y, splits=[90,10])
     [Y_binarized_train, Y_binarized_test] = np.split(Y_binarized,splits)[:-1]
