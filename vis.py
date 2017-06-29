@@ -41,6 +41,14 @@ def Rsq(X,Y):
     Rsq.__name__ = r"$R^2$"
     return pearsonr(X,Y)[0]**2
 
+def get_printable_data(charges):
+    charges = charges[np.nonzero(charges)]
+    charges.sort()
+    charges = charges[::-1]
+    tot_ele = len(charges)
+    heavy = sum(charges != 1)
+    return "_".join(map(str,charges.tolist())), tot_ele, heavy, 
+
 print("Chanded dir to {}".format(dump_dir))
 
 Y_pred = np.load("Y_test_pred_best.npz")["Y_test_pred"]
@@ -53,6 +61,14 @@ if needs_shift_scale == "no_shift_scale":
     print("No, shift and scale applied")
 Y_pred = Y_pred * Y_std + Y_mean
 Y_test = Y_test * Y_std + Y_mean
+
+Z_test = None
+Z_string = ""
+try:
+    Z_test = np.load('X_vals.npz')['Z_test']
+except KeyError as e:
+    pass
+
 
 if vis_type == "energies":
 
@@ -97,7 +113,9 @@ elif vis_type in ("spectrum_mse", "spectrum_mse_all"):
         sorted_idxs = np.argsort(mse_values)
         zeros_to_pad = np.round(np.log10(len(mse_values))).astype(np.int32)
         for position, sorted_idx in enumerate(sorted_idxs):
-            plot_fig(sorted_idx, title="Spectrum with MSE (= {:>0.4})".format(mse_values[sorted_idx]), filename=("mse_testset_prediction_{:0>%d}" % zeros_to_pad).format(position))
+            if Z_test is not None:
+                Z_string,tot_ele,heavy = get_printable_data(Z_test[sorted_idx])
+            plot_fig(sorted_idx, title="Spectrum with MSE (= {:>0.4})".format(mse_values[sorted_idx]), filename=("mse_testset_prediction_{:0>%d}-{}-{}-{}" % zeros_to_pad).format(position, tot_ele, heavy, Z_string))
 
 elif vis_type in ("spectrum_mae", "spectrum_mae_all"):
     """
@@ -117,7 +135,9 @@ elif vis_type in ("spectrum_mae", "spectrum_mae_all"):
         sorted_idxs = np.argsort(mae_values)
         zeros_to_pad = np.round(np.log10(len(mae_values))).astype(np.int32)
         for position, sorted_idx in enumerate(sorted_idxs):
-            plot_fig(sorted_idx, title="Spectrum with MAE (= {:>0.4})".format(mae_values[sorted_idx]), filename=("mae_testset_prediction_{:0>%d}" % zeros_to_pad).format(position))
+            if Z_test is not None:
+                Z_string,tot_ele,heavy = get_printable_data(Z_test[sorted_idx])
+            plot_fig(sorted_idx, title="Spectrum with MAE (= {:>0.4})".format(mae_values[sorted_idx]), filename=("mae_testset_prediction_{:0>%d}-{}-{}-{}" % zeros_to_pad).format(position,tot_ele, heavy, Z_string))
 else:
     print("Supported vis_types = {}".format(["energies", "spectrum_mae", "spectrum_mse", "spectrum_mae_all", "spectrum_mse_all"]))
 
