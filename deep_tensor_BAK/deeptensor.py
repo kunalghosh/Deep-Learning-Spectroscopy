@@ -169,7 +169,10 @@ def main():
     l_cT = RecurrentLayer(l_c0, l_in_D, l_mask, num_passes=num_interaction_passes, num_hidden=num_hidden_neurons)
 
     # Compute energy contribution from each atom
-    l_atom1 = lasagne.layers.DenseLayer(l_cT, 15, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    # l_atom1 = lasagne.layers.DenseLayer(l_cT, 15, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    l_atom1 = lasagne.layers.DenseLayer(l_cT, 100, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    l_atom1 = lasagne.layers.DenseLayer(l_atom1, 100, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    l_atom1 = lasagne.layers.DenseLayer(l_atom1, 100, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
     l_atom2 = lasagne.layers.DenseLayer(l_atom1, values_to_predict, nonlinearity=None, num_leading_axes=2) # outdim (-1, 23, values_to_predict)
     if path_to_targets_file is None:
         l_atom2 = lasagne.layers.FlattenLayer(l_atom2, outdim=2) # Flatten singleton dimension # outdim (-1, 23)
@@ -242,7 +245,7 @@ def main():
         D_train_perm = D_train[rand_perm]
         y_train_perm = y_train[rand_perm]
 
-        if epoch < 100:
+        if epoch < 10:#100:
         #if epoch < 50:
             learning_rate = 0.01
         elif epoch < 500:
