@@ -106,9 +106,9 @@ elif vis_type in ("spectrum_mse", "spectrum_mse_all"):
         min_mse_idx = np.argmin(mse_values)
         max_mse_idx = np.argmax(mse_values)
         #---- Plotting spectrum with lowest mse
-        plot_fig(min_mse_idx, title="Spectrum with Lowest MSE (= {:>0.4})".format(mse_values[min_mse_idx]), filename="min_mse_testset_prediction.png")
+        plot_fig(min_mse_idx, title="Spectrum with Lowest RMSE (= {:>0.4})".format(mse_values[min_mse_idx]), filename="min_mse_testset_prediction.png")
         #---- Plotting spectrum with highest mse
-        plot_fig(max_mse_idx, title="Spectrum with Highest MSE (= {:>0.4})".format(mse_values[max_mse_idx]), filename="max_mse_testset_prediction.png")
+        plot_fig(max_mse_idx, title="Spectrum with Highest RMSE (= {:>0.4})".format(mse_values[max_mse_idx]), filename="max_mse_testset_prediction.png")
     elif vis_type == "spectrum_mse_all":
         sorted_idxs = np.argsort(mse_values)
         zeros_to_pad = np.round(np.log10(len(mse_values))).astype(np.int32)
