@@ -12,7 +12,7 @@ from dtnn_layers import SwitchLayer, MaskLayer, SumMaskedLayer, RecurrentLayer
 logger = logging.getLogger(__name__)
 
 def orig_model(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
-        num_interaction_passes, num_hidden_neurons, values_to_predict,cost):
+        num_interaction_passes, num_hidden_neurons, values_to_predict,cost,**kwargs):
 
     # path to targets_file is not NONE
     sym_Z = T.imatrix()
@@ -75,7 +75,7 @@ def orig_model(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
     return f_train, f_eval_test, f_test, l_out
 
 def orig_model_with_noise(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
-        num_interaction_passes, num_hidden_neurons, values_to_predict,cost, noise_std=0.1,):
+        num_interaction_passes, num_hidden_neurons, values_to_predict,cost, noise_std=0.1,**kwargs):
 
     # path to targets_file is not NONE
     sym_Z = T.imatrix()

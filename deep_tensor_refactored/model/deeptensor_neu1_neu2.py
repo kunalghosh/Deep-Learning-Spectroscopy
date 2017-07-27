@@ -11,8 +11,8 @@ from dtnn_layers import SwitchLayer, MaskLayer, SumMaskedLayer, RecurrentLayer
 
 logger = logging.getLogger(__name__)
 
-def model_100_200(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
-        num_interaction_passes, num_hidden_neurons, values_to_predict,cost, **kwargs):
+def model_neu1_neu2(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
+        num_interaction_passes, num_hidden_neurons, values_to_predict,cost, num_neu_1, num_neu_2,**kwargs):
 
     # path to targets_file is not NONE
     sym_Z = T.imatrix()
@@ -29,8 +29,8 @@ def model_100_200(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
 
     # Compute energy contribution from each atom
     # l_atom1 = lasagne.layers.DenseLayer(l_cT, 15, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
-    l_atom1 = lasagne.layers.DenseLayer(l_cT, 100, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
-    l_atom1 = lasagne.layers.DenseLayer(l_atom1, 200, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    l_atom1 = lasagne.layers.DenseLayer(l_cT, num_neu_1, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    l_atom1 = lasagne.layers.DenseLayer(l_atom1, num_neu_2, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
     l_atom2 = lasagne.layers.DenseLayer(l_atom1, values_to_predict, nonlinearity=None, num_leading_axes=2) # outdim (-1, 23, values_to_predict)
     l_atomE = lasagne.layers.ExpressionLayer(l_atom2, lambda x: (x*Estd+Emean)) # Scale and shift by mean and std deviation
     l_mask = lasagne.layers.ReshapeLayer(l_mask, ([0], [1], 1)) # add an extra dimension so that l_atomE (-1, 23, 16) l_mask "after reshape" (-1, 23, 1) can be multiplied
@@ -76,8 +76,8 @@ def model_100_200(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
 
     return f_train, f_eval_test, f_test, l_out
 
-def model_100_200_with_noise(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
-        num_interaction_passes, num_hidden_neurons, values_to_predict,cost, noise_std=0.1, **kwargs):
+def model_neu1_neu2_with_noise(Emean, Estd, max_mol_size, num_dist_basis, c_len, num_species,
+        num_interaction_passes, num_hidden_neurons, values_to_predict,cost, num_neu_1, num_neu_2, noise_std=0.1, **kwargs):
 
     # path to targets_file is not NONE
     sym_Z = T.imatrix()
@@ -95,8 +95,8 @@ def model_100_200_with_noise(Emean, Estd, max_mol_size, num_dist_basis, c_len, n
 
     # Compute energy contribution from each atom
     # l_atom1 = lasagne.layers.DenseLayer(l_cT, 15, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
-    l_atom1 = lasagne.layers.DenseLayer(l_cT, 100, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
-    l_atom1 = lasagne.layers.DenseLayer(l_atom1, 200, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    l_atom1 = lasagne.layers.DenseLayer(l_cT, num_neu_1, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
+    l_atom1 = lasagne.layers.DenseLayer(l_atom1, num_neu_2, nonlinearity=lasagne.nonlinearities.tanh, num_leading_axes=2) # outdim (-1, 23, 15)
     l_atom2 = lasagne.layers.DenseLayer(l_atom1, values_to_predict, nonlinearity=None, num_leading_axes=2) # outdim (-1, 23, values_to_predict)
     l_atomE = lasagne.layers.ExpressionLayer(l_atom2, lambda x: (x*Estd+Emean)) # Scale and shift by mean and std deviation
     l_mask = lasagne.layers.ReshapeLayer(l_mask, ([0], [1], 1)) # add an extra dimension so that l_atomE (-1, 23, 16) l_mask "after reshape" (-1, 23, 1) can be multiplied

@@ -1,9 +1,11 @@
 import gc
 import os
 import sys
+import copy
 from os import path
 import pdb
 import cPickle as pickle
+import logging
 import gzip
 import timeit
 import numpy as np
@@ -22,15 +24,23 @@ import click
 
 theano.config.floatX = 'float32'
 
-loggger = None
+# loggger = None
 
 def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, num_species,
             max_mol_size, values_to_predict, max_epochs, batch_size,num_interaction_passes,
-            num_hidden_neurons,c_len,num_dist_basis, cost, model_name, learn_rate, **kwargs):
+            num_hidden_neurons,c_len,num_dist_basis, cost, model_name, learn_rate, earlystop_epochs,
+            logger,check_every=2,**kwargs):
         # training_data,valid_data,test_data, trainin_hyperparams,model_name, model_hyperparams,
         #                 num_train_batches,num_train_samples,batch_size = 100,max_epochs=10000,
         #                 c_len = 30,num_hidden_neurons = 60,num_interaction_passes = 2,values_to_predict=-1
         #                 ):
+
+    """
+    param check_every      : Check the validation and test error every, these many epochs.
+    param earlystop_epochs : If the validation error has not reduced in these many epochs
+                             the training stops. It is decremented by 'check_every' depending
+                             on the 'cost'. It is reset to its initial value if error reduces.
+    """
     Z_train, D_train, y_train = train_data
     Z_val, D_val, y_val = valid_data
     Z_test, D_test, y_test    = test_data
@@ -49,12 +59,13 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, num_spec
     
     f_train, f_eval_test, f_test, l_out =  model(Emean, Estd, max_mol_size,
                 num_dist_basis, c_len, num_species,num_interaction_passes, 
-                num_hidden_neurons, values_to_predict, cost)
+                num_hidden_neurons, values_to_predict, cost, **kwargs)
         
     start_time = timeit.default_timer()
 
     lowest_test_mae = np.inf
     lowest_test_rmse = np.inf
+    lowest_test_error = np.inf
     mu_max = None#np.max(D_train)+1
 
     D_val_fe = feature_expand(D_val, num_dist_basis, mu_max=mu_max)
@@ -64,6 +75,8 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, num_spec
 
     num_train_samples = Z_train.shape[0]
     num_train_batches = num_train_samples // batch_size
+
+    earlystop_epoch_counter = copy.deepcopy(earlystop_epochs)
 
     for epoch in range(max_epochs):
         # Randomly permute training data
@@ -98,7 +111,7 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, num_spec
         train_cost = train_cost / num_train_batches
         # logger.info("Got training cost.")
 
-        if (epoch % 2) == 0:
+        if (epoch % check_every) == 0:
             y_pred = f_eval_test(Z_val, D_val_fe)
             val_errors = y_pred-y_val
 
@@ -125,12 +138,20 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, num_spec
                 lowest_test_mae = new_test_mae
                 logger.info("Found best test MAE : {}".format(lowest_test_mae))
                 np.savez("Y_test_pred_best_mae.npz", Y_test_pred = y_pred)
+                if cost == "mae":
+                    # Only update early stoppping counter if we are interested in this cost
+                    earlystop_epoch_counter = copy.deepcopy(earlystop_epochs)
+                    lowest_test_error = lowest_test_mae
 
             new_test_rmse = rmse(test_errors)
             if new_test_rmse < lowest_test_rmse:
                 lowest_test_rmse = new_test_rmse
                 logger.info("Found best test RMSE : {}".format(lowest_test_rmse))
                 np.savez("Y_test_pred_best_rmse.npz", Y_test_pred = y_pred)
+                if cost == "rmse":
+                    # Only update early stoppping counter if we are interested in this cost
+                    earlystop_epoch_counter = copy.deepcopy(earlystop_epochs)
+                    lowest_test_error = lowest_test_rmse
 
             end_time = timeit.default_timer()
 
@@ -139,9 +160,15 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, num_spec
             logger.debug("Time %4.1f, Epoch %4d, train_cost=%5g, test_error=%5g" % (end_time - start_time, epoch, train_error, test_error))
             start_time = timeit.default_timer()
 
-    return test_error
+            # update and check the early stop counter.
+            earlystop_epoch_counter -= check_every
+            if earlystop_epoch_counter <= 0:
+                break
 
-def get_data(path_to_xyz_file, path_to_targets_file, num_dist_basis=40, 
+    # return test_error
+    return lowest_test_error
+
+def get_data(path_to_xyz_file, path_to_targets_file, logger, num_dist_basis=40, 
             expand_features=False,train_split=0.9, valid_test_split=0.5, **kwargs):
 
     Z, D, y, num_species = load_qm7b_data(num_dist_basis, dtype=theano.config.floatX,
@@ -201,13 +228,16 @@ def get_data(path_to_xyz_file, path_to_targets_file, num_dist_basis=40,
     return return_dict
 
 def main(**params):
-    mydir = os.path.join(os.getcwd(),datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    parent_dir = os.getcwd()
+    mydir = os.path.join(os.getcwd(),timestamp)
     os.makedirs(mydir)
     os.chdir(mydir)
     os.mkdir("results")
     
     app_name="DeepTensor"
-    global logger;
+    #global logger;
+    # logger,fh,ch = get_logger(app_name=app_name, logfolder=mydir, fname="log_file_{}.log".format(timestamp))
     logger = get_logger(app_name=app_name, logfolder=mydir)
     logger.info("GOT LOGGER !")
 
@@ -215,25 +245,35 @@ def main(**params):
 
     # save hyparameters
     np.savez("results/hyperparams.npz",  **params)
-    data = get_data(**params)
+    data = get_data(logger=logger,**params)
     print("GOT DATA !")
     
     params_and_data = params.copy()
     params_and_data.update(data)
     
-    error = train_and_get_error(**params_and_data)
+    error = train_and_get_error(logger=logger,**params_and_data)
     print("Test error :", error)
+    
+    #clean up
+    os.chdir(parent_dir)
+    return error
 
 @click.command()
 @click.option('--clen', default=30, help="The atomic descriptor 'C' used in Deep Tensor Neural Networks. Shutt et.al. 2017")
 @click.option('--batch_size', default=100, help="The training batch size.")
+@click.option('--num_neu_1', default=100, help="The number of neurons in the penultimate layer in DTNN. (Used only if model accepts this param)")
+@click.option('--num_neu_2', default=200, help="The number of neurons in last layer in DTNN. (Used only if model accepts this param)")
 @click.option('--model_name', default="orig_model", help="Name of the DTNN model")
 @click.option('--learn_rate', type=click.FLOAT, default=None, help="The adam learning rate, if not set then a separate scheme is used.")
+@click.option('--max_epochs', default=10000, help="Maximum number of training epochs.")
+@click.option('--earlystop_epochs', default=100, help="If the validation error doesn't improve in these many epochs, the training is terminated.")
 @click.argument('path_to_xyz_file')#,help="Path to the XYZ file.")
 @click.argument('path_to_targets_file')#,help="Path to the energies or spectrum files.")
-def get_params_and_goto_main(path_to_xyz_file, path_to_targets_file, model_name, learn_rate, clen=30, numHiddenNeurons=60,
+def get_params_and_goto_main(path_to_xyz_file, path_to_targets_file, model_name, 
+        learn_rate=0.00001, earlystop_epochs=100, clen=30, numHiddenNeurons=60,
         numInteracPasses=2, numDistBasis=40, batch_size=100,
-        trainSplit=0.9, valid_test_split=0.5, maxEpochs=10000, cost="rmse"):
+        trainSplit=0.9, valid_test_split=0.5, max_epochs=10000, cost="rmse",
+        num_neu_1=100, num_neu_2=200):
     
     params = {
             "c_len":clen, 
@@ -244,11 +284,14 @@ def get_params_and_goto_main(path_to_xyz_file, path_to_targets_file, model_name,
             "path_to_targets_file":path_to_targets_file, 
             "train_split" : trainSplit,
             "valid_test_split" : valid_test_split,
-            "max_epochs" :  maxEpochs,
+            "max_epochs" :  max_epochs,
             "batch_size" : batch_size,
             "cost" : cost,
             "model_name" : model_name,
-            "learn_rate" : learn_rate
+            "learn_rate" : learn_rate,
+            "earlystop_epochs" : earlystop_epochs,
+            "num_neu_1" : num_neu_1,
+            "num_neu_2" : num_neu_2
             }
     main(**params)
 
