@@ -21,14 +21,14 @@ from util import get_logger
 # import model.deeptensor as model_factory
 import model as model_factory
 import click
-from coulomb_shuffle import coulomb_shuffle
+from nn import Input
 
 theano.config.floatX = 'float32'
 
 def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, 
-        conv_filters, values_to_predict, max_epochs, batch_size, cost, 
+        units_list, values_to_predict, max_epochs, batch_size, cost, 
         model_name, learn_rate, earlystop_epochs, logger, coulomb_dims, 
-        check_every=2,**kwargs):
+        activation, check_every=2,**kwargs):
         # training_data,valid_data,test_data, trainin_hyperparams,model_name, model_hyperparams,
         #                 num_train_batches,num_train_samples,batch_size = 100,max_epochs=10000,
         #                 c_len = 30,num_hidden_neurons = 60,num_interaction_passes = 2,values_to_predict=-1
@@ -47,6 +47,10 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
     rng = np.random.RandomState(4)
     np.random.seed(1)
 
+    randomizer = Input(X = X_train, coulomb_size = coulomb_dims[1])
+    X_temp = randomizer.forward(X_train[:2])
+    input_dim = X_temp.shape[1]
+
     try:
         logger.info("Trying to load model '%s'" % model_name)
         model = getattr(model_factory, model_name)
@@ -56,8 +60,9 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
     else:
         logger.info("Loaded '%s'" % model_name)
     
-    f_train, f_eval_test, f_test, l_out =  model(filters_list = conv_filters,
-            outdim = values_to_predict, cost = cost, input_dims = coulomb_dims, **kwargs)
+    f_train, f_eval_test, f_test, l_out =  model(units_list = units_list,
+            outdim = values_to_predict, cost = cost, input_dim = input_dim, 
+            activation = activation, **kwargs)
         
     start_time = timeit.default_timer()
 
@@ -77,21 +82,26 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
     earlystop_epoch_counter = copy.deepcopy(earlystop_epochs)
 
 
-    extend_dims = [-1]
-    extend_dims.extend(coulomb_dims)
-    X_train = X_train.reshape(-1, coulomb_dims[1], coulomb_dims[2])
-    # pdb.set_trace()
-    X_train_row_norms = np.linalg.norm(X_train, axis=1)
+    # extend_dims = [-1]
+    # extend_dims.extend(coulomb_dims)
+    # X_train = X_train.reshape(-1, coulomb_dims[1], coulomb_dims[2])
+    # # pdb.set_trace()
+    # X_train_row_norms = np.linalg.norm(X_train, axis=1)
+
+    X_test_bin = randomizer.forward(X_test)
+    X_val_bin  = randomizer.forward(X_val)
+    
 
     for epoch in range(max_epochs):
-        # Randomly shuffle coulomb matrix
-        X_train = X_train.reshape(-1, coulomb_dims[1], coulomb_dims[2])
-        X_train = coulomb_shuffle(X_train, X_train_row_norms)
-        X_train = X_train.reshape(extend_dims)
+        # # Randomly shuffle coulomb matrix
+        # X_train = X_train.reshape(-1, coulomb_dims[1], coulomb_dims[2])
+        # X_train = coulomb_shuffle(X_train, X_train_row_norms)
+        # X_train = X_train.reshape(extend_dims)
 
         # Randomly permute training data
         rand_perm = rng.permutation(X_train.shape[0])
-        X_train_perm = X_train[rand_perm]
+        X_train_perm = randomizer.forward(X_train[rand_perm])
+        # X_train_perm = randomizer.expand(randomizer.realize(X_train[rand_perm]))
         # D_train_perm = D_train[rand_perm]
         y_train_perm = y_train[rand_perm]
 
@@ -123,14 +133,14 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
 
         if (epoch % check_every) == 0:
             # y_pred = f_eval_test(Z_val, D_val_fe)
-            y_pred = f_eval_test(X_val)
+            y_pred = f_eval_test(X_val_bin)
             val_errors = y_pred-y_val
 
             # logger.info("Got Y val_pred")
 
-            y_pred = f_eval_test(X_test)
+            y_pred = f_eval_test(X_test_bin)
             test_errors = y_pred-y_test
-            test_cost = f_test(X_test, y_test)
+            test_cost = f_test(X_test_bin, y_test)
             
             rmse = lambda x: np.sqrt(np.square(x).mean())
             mae  = lambda x: np.abs(x).mean()
@@ -188,32 +198,22 @@ def get_data(path_to_coulomb_file, path_to_targets_file, logger,
 
     # X,y = load_data(coulomb_txtfile=path_to_coulomb_file,coulomb_dims = (1, coulomb_dim, coulomb_dim), dtype=theano.config.floatX)
 
-    ## data_file = np.load(path_to_coulomb_file)
-    ## data_file_name = data_file.files[0]
-    ## extend_dims = [-1]
-    ## extend_dims.extend(coulomb_dims)
-    ## X = data_file[data_file_name].reshape(extend_dims).astype(dtype)
-
-    # --- new loader
-
     try:
         # NOTE: loading as npz first and then as txt 
         # is opposite to what was done for loading 'y' values
         # loading npz first was done much later, I thought this was better.
         data_file = np.load(path_to_coulomb_file)
         data_file_name = data_file.files[0]
-        X = data_file[data_file_name]
+        # X = data_file[data_file_name].reshape(extend_dims).astype(dtype)
+        X = data_file[data_file_name].astype(dtype)
     except IOError as e:
         # can't find the npz file or
         # can't load the file as pickle file
-        X = np.loadtxt(path_to_coulomb_file)
+        X = np.loadtxt(path_to_coulomb_file).astype(dtype)
+        extend_dims = [-1]
+        extend_dims.extend(coulomb_dims[1:])
+        X = X.reshape(extend_dims)
 
-    extend_dims = [-1]
-    extend_dims.extend(coulomb_dims)
-    # X = data_file[data_file_name].reshape(extend_dims).astype(dtype)
-    X = X.reshape(extend_dims).astype(dtype)
-
-    # X = data_file[data_file_name].astype(dtype)
     logger.info("X shape = {}".format(X.shape))
     # The y values are free_energies but we want to predict 16 energies / spectrum so 
     # we load them next.
@@ -281,7 +281,7 @@ def main(**params):
     os.chdir(mydir)
     os.mkdir("results")
     
-    app_name="CNN"
+    app_name="MLP"
     #global logger;
     # logger,fh,ch = get_logger(app_name=app_name, logfolder=mydir, fname="log_file_{}.log".format(timestamp))
     logger = get_logger(app_name=app_name, logfolder=mydir)
@@ -311,11 +311,12 @@ def main(**params):
 @click.option('--max_epochs', default=10000, help="Maximum number of training epochs.")
 @click.option('--coulomb_dim', default=23, help="Dimensions of one side of a coulomb matrix (symmetric).")
 @click.option('--earlystop_epochs', default=100, help="If the validation error doesn't improve in these many epochs, the training is terminated.")
-@click.option('--conv_filters', '-c', multiple=True, help="Number of convolution filters in respective layers, can be passed multiple times which corresponds to the layers in that order.")
+@click.option('--activation', default="rectify", help="The activation function to use in the dense layers.")
+@click.option('--num_units', '-u', multiple=True, help="Number of units in respective layers, can be passed multiple times with each instance corresponding to the number of units in layers in that order.")
 @click.argument('path_to_coulomb_file')#,help="Path to the XYZ file.")
 @click.argument('path_to_targets_file')#,help="Path to the energies or spectrum files.")
 def get_params_and_goto_main(path_to_coulomb_file, path_to_targets_file, model_name, 
-        coulomb_dim, conv_filters, learn_rate=0.00001, earlystop_epochs=100,
+        coulomb_dim, num_units, activation, learn_rate=0.00001, earlystop_epochs=100,
         batch_size=100, trainSplit=0.9, valid_test_split=0.5, max_epochs=10000,
         cost="rmse"):
     
@@ -328,10 +329,11 @@ def get_params_and_goto_main(path_to_coulomb_file, path_to_targets_file, model_n
             "batch_size" : batch_size,
             "cost" : cost,
             "model_name" : model_name,
-            "conv_filters" : [int(_) for _ in conv_filters],
+            "units_list" : [int(_) for _ in num_units],
             "learn_rate" : learn_rate,
             "earlystop_epochs" : earlystop_epochs,
-            "coulomb_dims" : (1,coulomb_dim, coulomb_dim)
+            "coulomb_dims" : (1,coulomb_dim, coulomb_dim),
+            "activation" : activation
             }
     main(**params)
 
