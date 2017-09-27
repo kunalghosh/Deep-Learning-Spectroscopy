@@ -1,4 +1,5 @@
 # Following example: http://seaborn.pydata.org/generated/seaborn.jointplot.html
+from __future__ import print_function
 import sys,os,pdb
 import numpy as np
 import pandas as pd
@@ -9,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
 sns.set(style="white", color_codes=True)
+sns.set_palette("Dark2")
 from plot_learn_curves import get_learn_curve_data
 
 vis_type = sys.argv[1]
@@ -17,7 +19,12 @@ dump_dir = sys.argv[3]
 
 os.chdir(dump_dir)
 
+# fontsize = 40
+
 def plot_fig(idx, title, filename):
+    # plt.rcParams.update({'font.size': fontsize})
+    sns.set(style="white", color_codes=True,font_scale=1.5, rc={"lines.linewidth" : 5})
+    sns.set_palette("Dark2")
     fig = plt.figure()
     plt.plot(x_vals, Y_test[idx,:], label="True")
     plt.title(title)
@@ -30,12 +37,19 @@ def plot_fig(idx, title, filename):
     plt.close()
 
 def plothist(data, title, filename):
+    # plt.rcParams.update({'font.size': fontsize})
+    sns.set(style="white", color_codes=True,font_scale=1.5)
+    sns.set_palette("gray")
+
     fig = plt.figure()
     plt.hist(data, bins=50)
     plt.title(title)
     plt.xlabel("Error")
     fig.savefig(filename)
     plt.close()
+
+    # sns.set(style="white", color_codes=True)
+    sns.set_palette("Dark2")
     
 def Rsq(X,Y):
     Rsq.__name__ = r"$R^2$"
@@ -55,7 +69,8 @@ Y_pred = np.load("Y_test_pred_best.npz")["Y_test_pred"]
 Y_test = np.load("Y_vals.npz")["Y_test"]
 Y_mean = np.load("Y_vals.npz")["Y_mean"]
 Y_std = np.load("Y_vals.npz")["Y_std"]
-if needs_shift_scale == "no_shift_scale":
+# if needs_shift_scale == "no_shift_scale":
+if needs_shift_scale == "no_scale_shift":
     Y_mean = np.zeros_like(Y_mean)
     Y_std  = np.ones_like(Y_std)
     print("No, shift and scale applied")
@@ -69,6 +84,12 @@ try:
 except KeyError as e:
     pass
 
+def save_to_file(error_list, sorted_idxs, filename):
+    with open(filename, "w+") as f:
+        for p,si in enumerate(sorted_idxs):
+            print("{} , {}".format(error_list[si],p), file=f)
+    print("Saved errrors and indices to {}".format(filename))
+
 
 if vis_type == "energies":
 
@@ -81,16 +102,23 @@ if vis_type == "energies":
         plt.xlim([_min, _max])
         plt.ylim([_min, _max])
 
-        fig = sns.jointplot(x=Y_pred[:,idx], y=Y_test[:,idx], stat_func=Rsq)
+        # fig, ax = plt.subplots(figsize=(1.685, 1.602))
+        # fig.set_size_inches(1.685, 1.602)
+        # sns.jointplot(x=Y_pred[:,idx], y=Y_test[:,idx], stat_func=Rsq)
+        sns.set(style="white", color_codes=True,font_scale=2.5)
+        sns.set_palette("gray")
+        # print(sns.axes_style())
+        fig = sns.jointplot(x=Y_pred[:,idx], y=Y_test[:,idx], stat_func=Rsq).set_axis_labels("Predicted [eV]", "True [eV]")
 
         # x0, x1 = fig.ax_joint.get_xlim()
         # y0, y1 = fig.ax_joint.get_ylim()
         
     
-        fig.ax_joint.plot([_min,_max],[_min,_max],":k")
-        sns.plt.title("Eigenvalue {:0>2d}".format(idx+1))
-        # sns.plt.xlabel("Y_pred [eV]")
-        # sns.plt.ylabel("Y_test [eV]")
+        # fig.ax_joint.plot([_min,_max],[_min,_max],":k")
+        fig.ax_joint.plot([_min,_max],[_min,_max],":w")
+        #sns.plt.title("Eigenvalue {:0>2d}".format(idx+1))
+        # sns.plt.xlabel("Predicted [eV]")
+        # sns.plt.ylabel("True [eV]")
         fig.savefig("{:0>2d}_testset_prediction.png".format(idx+1))
         plt.close()
 elif vis_type in ("spectrum_mse", "spectrum_mse_all"):
@@ -111,11 +139,15 @@ elif vis_type in ("spectrum_mse", "spectrum_mse_all"):
         plot_fig(max_mse_idx, title="Spectrum with Highest RMSE (= {:>0.4})".format(mse_values[max_mse_idx]), filename="max_mse_testset_prediction.png")
     elif vis_type == "spectrum_mse_all":
         sorted_idxs = np.argsort(mse_values)
-        zeros_to_pad = np.round(np.log10(len(mse_values))).astype(np.int32)
+        zeros_to_pad = np.ceil(np.log10(len(mse_values))).astype(np.int32)
+
+        save_to_file(mse_values, sorted_idxs, filename="mse_error_filename.txt") 
         for position, sorted_idx in enumerate(sorted_idxs):
             if Z_test is not None:
                 Z_string,tot_ele,heavy = get_printable_data(Z_test[sorted_idx])
-            plot_fig(sorted_idx, title="Spectrum with MSE (= {:>0.4})".format(mse_values[sorted_idx]), filename=("mse_testset_prediction_{:0>%d}-{}-{}-{}" % zeros_to_pad).format(position, tot_ele, heavy, Z_string))
+                plot_fig(sorted_idx, title="Spectrum with MSE (= {:>0.4})".format(mse_values[sorted_idx]), filename=("mse_testset_prediction_{:0>%d}-{}-{}-{}" % zeros_to_pad).format(position, tot_ele, heavy, Z_string))
+            else:
+                plot_fig(sorted_idx, title="Spectrum with MSE (= {:>0.4})".format(mse_values[sorted_idx]), filename=("mse_testset_prediction_{:0>%d}" % zeros_to_pad).format(position))
 
 elif vis_type in ("spectrum_mae", "spectrum_mae_all"):
     """
@@ -133,11 +165,15 @@ elif vis_type in ("spectrum_mae", "spectrum_mae_all"):
         plot_fig(max_mae_idx, title="Spectrum with Highest MAE (= {:>0.4})".format(mae_values[max_mae_idx]), filename="max_mae_testset_prediction.png")
     elif vis_type == "spectrum_mae_all":
         sorted_idxs = np.argsort(mae_values)
-        zeros_to_pad = np.round(np.log10(len(mae_values))).astype(np.int32)
+        zeros_to_pad = np.ceil(np.log10(len(mae_values))).astype(np.int32)
+
+        save_to_file(mse_values, sorted_idxs, filename="mae_error_filename.txt") 
         for position, sorted_idx in enumerate(sorted_idxs):
             if Z_test is not None:
                 Z_string,tot_ele,heavy = get_printable_data(Z_test[sorted_idx])
-            plot_fig(sorted_idx, title="Spectrum with MAE (= {:>0.4})".format(mae_values[sorted_idx]), filename=("mae_testset_prediction_{:0>%d}-{}-{}-{}" % zeros_to_pad).format(position,tot_ele, heavy, Z_string))
+                plot_fig(sorted_idx, title="Spectrum with MAE (= {:>0.4})".format(mae_values[sorted_idx]), filename=("mae_testset_prediction_{:0>%d}-{}-{}-{}" % zeros_to_pad).format(position,tot_ele, heavy, Z_string))
+            else:
+                plot_fig(sorted_idx, title="Spectrum with MAE (= {:>0.4})".format(mae_values[sorted_idx]), filename=("mae_testset_prediction_{:0>%d}" % zeros_to_pad).format(position))
 else:
     print("Supported vis_types = {}".format(["energies", "spectrum_mae", "spectrum_mse", "spectrum_mae_all", "spectrum_mse_all"]))
 

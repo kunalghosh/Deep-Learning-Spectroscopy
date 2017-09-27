@@ -8,7 +8,10 @@ import lasagne
 import theano.tensor as T
 import theano
 # from lasagne.layers.dnn import Conv2DDNNLayer as Conv2DLayer
-from lasagne.layers import Conv2DLayer, MaxPool2DLayer, DenseLayer, FlattenLayer
+# from lasagne.layers.dnn import MaxPool2DDNNLayer as Conv2DLayer
+from lasagne.layers import Conv2DLayer
+from lasagne.layers import MaxPool2DLayer
+from lasagne.layers import DenseLayer, FlattenLayer
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,7 @@ def orig_model(filters_list, outdim, cost, input_dims = (1, 23, 23), activation=
                 filter_size = 3,
                 pad = "same",
                 flip_filters = False,
+                nonlinearity = nonlinearity,
                 name="layer_conv_{}_1".format(idx)
                 ))
             layers.append(Conv2DLayer(layers[-1],
@@ -48,6 +52,7 @@ def orig_model(filters_list, outdim, cost, input_dims = (1, 23, 23), activation=
                 filter_size = 3,
                 pad = "same",
                 flip_filters = False,
+                nonlinearity = nonlinearity,
                 name="layer_conv_{}_2".format(idx)
                 ))
             layers.append(Conv2DLayer(layers[-1],
@@ -55,6 +60,7 @@ def orig_model(filters_list, outdim, cost, input_dims = (1, 23, 23), activation=
                 filter_size = 3,
                 pad = "same",
                 flip_filters = False,
+                nonlinearity = nonlinearity,
                 name="layer_conv_{}_3".format(idx)
                 ))
             layers.append(MaxPool2DLayer(layers[-1],

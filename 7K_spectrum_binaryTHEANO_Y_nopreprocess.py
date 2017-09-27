@@ -1,7 +1,5 @@
-# coding: utf-8
 
-# Takes in the coulomb matrix and predicts the 20 eigen values
-# individually
+# coding: utf-8
 
 # In[3]:
 
@@ -36,15 +34,12 @@ from lasagne.objectives import squared_error, binary_crossentropy
 from lasagne.updates import adam, sgd, momentum, nesterov_momentum
 
 from util import get_logger
-from coulomb_shuffle import coulomb_shuffle
-
-from nn import Input,Output
 
 logger = None
 
-def load_data(coulomb_txtfile, energies_txtfile, w=29, h=29):
+def load_data(coulomb_txtfile, energies_txtfile):
     Y = np.loadtxt(energies_txtfile).astype(np.float32) # Note that here y_i is a vector of 20 values
-    X = np.loadtxt(coulomb_txtfile).reshape((-1,w,h)).astype(np.float32)
+    X = np.loadtxt(coulomb_txtfile).reshape((-1,1,29,29)).astype(np.float32)
     return X,Y
 
 def preprocess_targets(Y, binary_threshold=10**-5, zero_mean=True, unit_var=True):
@@ -71,7 +66,6 @@ def preprocess_targets(Y, binary_threshold=10**-5, zero_mean=True, unit_var=True
     Y = Y / _std
     return Y, _mean, _std, Y_binarized
 
-
 def get_data_splits(X,Y,splits=None, randomize=None):
     """
     * X and Y must be numpy "arrays"
@@ -82,6 +76,7 @@ def get_data_splits(X,Y,splits=None, randomize=None):
     * You can also pass a list splits = [train, test] where train and test are integers
     and train + test must be equal to 100.
     """
+    pdb.set_trace()
     if splits is None:
         splits = [75, 25]
     else:
@@ -96,6 +91,7 @@ def get_data_splits(X,Y,splits=None, randomize=None):
     index_splits = np.floor(np.cumsum(splits) * num_datapoints / 100).astype(np.int32)
     # The last split is empty when the count of splits adds up to 100%
     return np.split(X, index_splits)[:-1], np.split(Y, index_splits)[:-1], index_splits
+
 
 def make_shared(data, borrow=True):
     shared_data = theano.shared(np.asarray(data, dtype=theano.config.floatX), borrow=borrow)
@@ -119,26 +115,18 @@ get_optimizer = {'adam':adam, 'sgd':sgd, 'momentum':momentum, 'nesterov_momentum
 @click.option('--batchsize', default=100, help="Mini batch size.")
 @click.option('--nepochs', default=500, help="Number of epochs for which to train the network.")
 @click.option('--plotevery', default=10, help="Print test error, save params etc every --plotevery epochs.")
-@click.option('--learningrate', help="Learning rate used by the optimizer")
+@click.option('--learningrate', default=0.001, help="Learning rate used by the optimizer")
 @click.option('--normalizegrads', type=click.IntRange(1,10), help="normalizes gradients to have the corresponding L2-norm.")
 @click.option('--clipgrads', type=click.IntRange(1,10), help="clips gradients to be +/- [value]")
 @click.option('--enabledebug', is_flag=True, help="Set this flag to enable debugging dumps (mainly parameter snapshots every minibatch)")
 @click.option('--optimizer', default='adam', help="The gradient update algorithm to use among {}".format(get_optimizer.keys()))
 @click.option('--yzeromean', is_flag=True, help="Set this flag to make Y zero mean.")
 @click.option('--yunitvar', is_flag=True, help="Set this flag to make Y unit variance.")
-@click.option('--noshuffle', is_flag=True, help="Set this flag to disable shuffling of coulomb matrices")
-@click.option('--nobatchnorm', is_flag=True, help="Set this flag to disable batch normalization layers.")
-@click.option('--remove5koutliers', is_flag=True, help="Set this flag to remove entries having -10000.000 in the 16th col of energies in 5k dataset. [only makes sense when predicting energies with 5k dataset]")
-@click.option('--coulombdim', default=(29,29), type=(int,int), help="The dimensions of the coulomb matrix. They are typically square but here input both width and height.")
-@click.option('--outputhomo', is_flag=True, help="Set this flag to only predict HOMO values. Otherwise all energies are predicted.")
-@click.option('--homocol', default=15, type=int, help="Column number having the homo values. Used only when outputhomo is TRUE.")
 @click.argument('datadir', type=click.Path(exists=True)) # help="The folder where energies.txt and coulomb.txt can be found"
 @click.argument('outputdir', type=click.Path(exists=True), default=os.getcwd()) # help="Folder where all the exeperiment artifacts are stored (Default: PWD)"
 def get_options(batchsize, nepochs, plotevery, 
         learningrate, normalizegrads, 
-        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, 
-        noshuffle, nobatchnorm, remove5koutliers, coulombdim, 
-        outputhomo, homocol,datadir, outputdir):
+        clipgrads, enabledebug, optimizer, yzeromean, yunitvar, datadir, outputdir):
 
     global batch_size;  batch_size  = batchsize
     global epochs;      epochs      = nepochs
@@ -155,52 +143,29 @@ def get_options(batchsize, nepochs, plotevery,
     logger = get_logger(app_name=app_name, logfolder=mydir)
 
     # Load dataset
-    w,h = coulombdim
     X,Y = load_data(datadir + os.sep + "coulomb.txt",
-                    datadir + os.sep + "energies.txt", 
-                    w = w,
-                    h = h)
+                    datadir + os.sep + "spectra_-30_0_300.txt")
 
-
-    #if remove5koutliers:
-    #    from get_idxs_to_keep import get_idxs_to_keep
-    #    idxs = get_idxs_to_keep(datadir + os.sep + "energies.txt")
-    #    X = X[idxs,:]
-    #    Y = Y[idxs,:]
-    #    logger.info("REMOVING 5k outliers.")
-
+    pdb.set_trace()
     Y, Y_mean, Y_std, Y_binarized = preprocess_targets(Y, zero_mean=yzeromean, unit_var=yunitvar)
-    if outputhomo:
-        Y = np.expand_dims(Y[:,homocol], axis=1)
     [X_train, X_test], [Y_train, Y_test], splits = get_data_splits(X,Y, splits=[90,10])
     [Y_binarized_train, Y_binarized_test] = np.split(Y_binarized,splits)[:-1]
 
-    np.savez('Y_vals.npz', Y_train=Y_train, Y_test=Y_test, Y_binarized_test=Y_binarized_test, Y_binarized_train=Y_binarized_train, Y_mean=Y_mean, Y_std=Y_std)
+    np.savez('Y_vals.npz', Y_train=Y_train, Y_test=Y_test, Y_binarized_test=Y_binarized_test, Y_binarized_train=Y_binarized_train,Y_mean=Y_mean, Y_std=Y_std)
     np.savez('X_vals.npz', X_train=X_train, X_test=X_test)
 
     dataDim = X.shape[1:]
-    assert dataDim == (w,h), "The dimensions of data you have passed {} and the ones after loading datafile {} don't match !".format((w,h), dataDim)
-
-    x_ipt = Input(X_train, coulomb_size=coulombdim[0])
-    _X_train = x_ipt.forward(X_train)
-
-    binarize_data_dim = _X_train.shape[1] # after binarization the data is flattened also.
-
-    if outputhomo:
-        outputDim = 1#Y.shape[1]
-    else:
-        outputDim = Y.shape[1]
-
+    outputDim = Y.shape[1]
     datapoints = len(X_train)
-    print("Training datapoints = %d" % datapoints)
+    print("datapoints = %d"%datapoints)
 
-    # # making the datapoints shared variables
-    # X_train           = make_shared(X_train)
-    # X_test            = make_shared(X_test)
-    # Y_train           = make_shared(Y_train)
-    # Y_test            = make_shared(Y_test)
-    # Y_binarized_train = make_shared(Y_binarized_train)
-    # Y_binarized_test  = make_shared(Y_binarized_test)
+    # making the datapoints shared variables
+    X_train           = make_shared(X_train)
+    X_test            = make_shared(X_test)
+    Y_train           = make_shared(Y_train)
+    Y_test            = make_shared(Y_test)
+    Y_binarized_train = make_shared(Y_binarized_train)
+    Y_binarized_test  = make_shared(Y_binarized_test)
  
     # TODO !!!!I am here
     # print("Train set size {}, Train set (labelled) size {}, Test set size {}," +
@@ -208,48 +173,34 @@ def get_options(batchsize, nepochs, plotevery,
     #             train_set[0].size,train_set_labeled[0].size, 
     #             test_set[0].size, valid_set[0].size))
 
-    eigen_value_count = outputDim
 
     # Defining the model now. 
-    th_coulomb      = T.fmatrix()
+    th_coulomb      = T.ftensor4()
     th_energies     = T.fmatrix()
-    #th_energies_bin = T.fmatrix()
-    th_learningrate = T.fscalar()
+    th_energies_bin = T.fmatrix()
+    indices         = T.ivector()
 
-    l_input    = InputLayer(shape=(None, binarize_data_dim),input_var=th_coulomb,     name="Input")
-    l_pseudo_bin = l_input 
-    if not nobatchnorm:
-        l_pseudo_bin = batch_norm(l_pseudo_bin)
+    l_input    = InputLayer(shape=(None, 1, 29,29),input_var=th_coulomb,         name="Input")
+    l_conv1    = Conv2DLayer(l_input,5,3, pad="same",                            name="conv1")
+    l_conv2    = Conv2DLayer(l_conv1,5,3, pad="same",                            name="conv2")
+    l_maxpool1 = MaxPool2DLayer(l_conv2, (2,2),                                  name="maxpool1")
+    l_conv3    = Conv2DLayer(l_maxpool1, 5, 2, pad="same",                       name="conv3")
+    l_maxpool2 = MaxPool2DLayer(l_conv3, (2,2),                                  name="maxpool2")
+    l_conv4    = Conv2DLayer(l_maxpool2, 5, 2, pad="same",                       name="conv4")
+    l_flatten  = FlattenLayer(l_conv4,                                           name="flatten")
+    l_realOut  = DenseLayer(l_flatten, num_units=outputDim, nonlinearity=linear, name="realOut")
+    l_binOut   = DenseLayer(l_flatten, num_units=outputDim, nonlinearity=sigmoid,name="binOut")
+    l_output   = ElemwiseMergeLayer([l_binOut, l_realOut], T.mul)
+
+    energy_output = get_output(l_output)
+    binary_output = get_output(l_binOut)
+
+    # loss_real   = T.sum(abs(energy_output - th_energies))
+    loss_real   = T.mean((energy_output - th_energies)**2)
+    loss_binary = T.sum(binary_crossentropy(binary_output, th_energies_bin))
+    loss = loss_real + loss_binary
     
-    l_h1 = []; l_h2 = []; l_realOut = []; l_binOut = [];
-
-    for branch_num in range(eigen_value_count):
-        l_h1.append(DenseLayer(l_pseudo_bin, num_units=400, nonlinearity=sigmoid, name="hidden_1_%d" % branch_num))
-        l_h2.append(DenseLayer(l_h1[-1], num_units=400,  nonlinearity=sigmoid, name="hidden_2_%d" % branch_num))
-        l_realOut.append(DenseLayer(l_h2[-1],    num_units=1,    nonlinearity=linear,  name= "realOut_%d" % branch_num))
-        # l_binOut.append(DenseLayer(l_h2[-1],num_units=1, nonlinearity=sigmoid,name="binOut"))
-        
-    l_realOut_cat = ConcatLayer(l_realOut, name="real_concat") 
-    # l_binOut_cat  = ConcatLayer(l_binOut,  name="bin_concat") 
-    # l_output = ElemwiseMergeLayer([l_binOut_cat, l_realOut_cat], T.mul, name="final_output")
-    l_output = l_realOut_cat
-
-    energy_output = get_output(l_output, deterministic=False)
-    # binary_output = get_output(l_binOut_cat, deterministic=False)
-    # get deterministic output for validation
-    energy_output_det = get_output(l_output, deterministic=True)
-    # binary_output_det = get_output(l_binOut_cat, deterministic=True)
-
-    loss_real   = T.mean(abs(energy_output - th_energies))
-    #loss_binary = T.mean(binary_crossentropy(binary_output, th_energies_bin))
-    loss = loss_real# + loss_binary
-
-    # get loss output for validation
-    loss_real_det = T.mean(abs(energy_output_det - th_energies))
-    #loss_binary_det = T.mean(binary_crossentropy(binary_output_det, th_energies_bin))
-    loss_det = loss_real_det #+ loss_binary_det
-    
-    params = get_all_params(l_output, trainable=True)
+    params = get_all_params(l_output)
     grad = T.grad(loss, params)
 
     if normalizegrads is not None:
@@ -259,94 +210,71 @@ def get_options(batchsize, nepochs, plotevery,
         grad = [T.clip(g, -clipgrads, clipgrads) for g in grad]
 
     optimization_algo = get_optimizer[optimizer]
-    # updates = optimization_algo(grad, params, learning_rate=learningrate)
-    updates = optimization_algo(grad, params, learning_rate=th_learningrate)
+    updates = optimization_algo(grad, params, learning_rate=learningrate)
    
-    train_fn  = theano.function([th_coulomb, th_energies, th_learningrate], [loss, energy_output], updates=updates, allow_input_downcast=True)
-    get_grad  = theano.function([th_coulomb, th_energies], grad)
-    # train_fn  = theano.function([th_coulomb, th_energies, th_energies_bin, th_learningrate], [loss, energy_output], updates=updates, allow_input_downcast=True)
+    # train_fn  = theano.function([th_coulomb, th_energies, th_energies_bin], [loss, energy_output], updates=updates, allow_input_downcast=True)
+    train_fn  = theano.function([indices], [loss, energy_output], updates=updates, allow_input_downcast=True,
+            givens = {th_coulomb: X_train[indices,:],
+                      th_energies: Y_train[indices,:],
+                      th_energies_bin: Y_binarized_train[indices,:]
+                })
     # get_grad  = theano.function([th_coulomb, th_energies, th_energies_bin], grad)
+    get_grad  = theano.function([indices], grad, allow_input_downcast=True, 
+            givens = {th_coulomb: X_train[indices,:],
+                      th_energies: Y_train[indices,:],
+                      th_energies_bin: Y_binarized_train[indices,:]
+                })
+
+    get_convOutput  = theano.function([indices], [get_output(l_conv1), get_output(l_conv2)], allow_input_downcast=True, 
+            givens = {th_coulomb: X_train[indices,:],
+                      th_energies: Y_train[indices,:],
+                      th_energies_bin: Y_binarized_train[indices,:]
+                })
+
     # get_updates = theano.function([th_data, th_labl], [updates.values()])
-    # val_fn    = theano.function([th_coulomb, th_energies, th_energies_bin], [loss_det, energy_output_det], allow_input_downcast=True)
-    val_fn    = theano.function([th_coulomb, th_energies], [loss_det, energy_output_det], allow_input_downcast=True)
+    val_fn    = theano.function([], [loss, energy_output], updates=updates, allow_input_downcast=True,
+            givens = {th_coulomb: X_test,
+                      th_energies: Y_test,
+                      th_energies_bin: Y_binarized_test
+                })
     
-    datapoints = len(X_train)
-    print("Training datapoints = %d"%datapoints)
     
     with open(os.path.join(mydir, "data.txt"),"w") as f:
         script = app_name
-        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","plotevery","noshuffle","nobatchnorm","remove5koutliers","coulombdim","outputhomo","script","datadir"]:
+        for elem in ["meta_seed", "dataDim", "batch_size", "epochs", "learningrate","normalizegrads","clipgrads","enabledebug","optimizer","script"]:
             f.write("{} : {}\n".format(elem, eval(elem)))
-    
+
     train_loss_lowest = np.inf
     test_loss_lowest = np.inf
-
-    row_norms = np.linalg.norm(X_train, axis=-1)
+    
     for epoch in range(epochs):
         batch_start = 0
         train_loss = []
 
-        if learningrate == None:
-            # if epoch > 0:
-            #     learning_rate = 0.001/20
-            # elif epoch > 500:
-            #     learning_rate = 0.0025/20
-            # elif epoch > 2500:
-            #     learning_rate = 0.005/20
-            # else:
-            #     learning_rate = 0.01/20
-            if epoch >= 0:
-                learning_rate = 0.00001
-            elif epoch > 500:
-                learning_rate = 0.000001
-            elif epoch > 1000:
-                learning_rate = 0.0000001
-            #elif epoch > 2000:
-            #    learning_rate = 0.00001
-
-        else:
-            learning_rate = eval(learningrate)
-            if isinstance(learning_rate, float):
-                pass
-            elif isinstance(learning_rate, list):
-                for epch, lrate in learning_rate:
-                    # ensure that last epoch is float("inf")
-                    if epoch <= epch:
-                        learning_rate = lrate
-                        break
-            else:
-                raise RuntimeError("Invalid learning rate.Either \n 1) Float or 2) List [[epch, lrate],...,[float('inf'), lrate]]") 
-        logger.debug("learning rate {}".format(learning_rate))
-
         indices = np.random.permutation(datapoints)
         minibatches = int(datapoints/batch_size)
-        if not noshuffle:
-            logger.debug("Shuffling Started.")
-            # X_train = coulomb_shuffle(X_train, row_norms)
-            _X_train = x_ipt.forward(X_train)
-            logger.debug("Shuffling complete.")
-
         for minibatch in range(minibatches):
             train_idxs     = indices[batch_start:batch_start+batch_size]
-            X_train_batch  = _X_train[train_idxs,:]
+            # X_train_batch  = X_train[train_idxs,:]
+            # Yr_train_batch = Y_train[train_idxs,:]
             # Yb_train_batch = Y_binarized_train[train_idxs, :]
-            Yr_train_batch = Y_train[train_idxs,:]
 
-            # train_output = train_fn(X_train_batch, Yr_train_batch, Yb_train_batch, learning_rate)
-            train_output = train_fn(X_train_batch, Yr_train_batch, learning_rate)
+            # train_output = train_fn(X_train_batch, Yr_train_batch, Yb_train_batch)
+            train_output = train_fn(train_idxs)
             batch_start  = batch_start + batch_size
             
             train_loss.append(train_output[0])
+            pdb.set_trace()
 
             if enabledebug:
                 # Debugging information
                 batchIdx = epoch*minibatches+minibatch
                 fn = 'params_{:>010d}'.format() # saving params
                 param_values = get_all_param_values(l_output)
-                param_norm   = np.linalg.norm(np.hstack([param.flatten() for param in param_values]))
+                param_norm   = np.linalg.norm(np.hstack([np.asarray(param).flatten() for param in param_values]))
                 # gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
-                gradients = get_grad(X_train_batch, Yr_train_batch)
-                gradient_norm = np.linalg.norm(np.hstack([gradient.flatten() for gradient in gradients]))
+                gradients = get_grad(train_idxs)
+                gradient_norm = np.linalg.norm(np.hstack([np.asarray(gradient).flatten() for gradient in gradients]))
                 logger.debug("Epoch : {:0>4}  minibatch {:0>3} Gradient Norm : {:>0.4}, Param Norm : {:>0.4} GradNorm/ParamNorm : {:>0.4} (Values from Prev. Minibatch) Train loss {}".format(epoch, minibatch, gradient_norm, param_norm, gradient_norm/param_norm,train_loss[-1]))
                 param_names  = [param.__str__() for param in get_all_params(l_output)]
                 np.savez(fn + '.npz', **dict(zip(param_names, param_values)))
@@ -354,7 +282,6 @@ def get_options(batchsize, nepochs, plotevery,
                 if train_loss[-1] < train_loss_lowest:
                     train_loss_lowest = train_loss[-1]
                     np.savez('Y_train_pred_best.npz', Y_train_pred = train_output[1])
-                    logger.debug("Found the best training prediction (Y_train_pred_best) at %d epoch %d minibatch" % (epoch, minibatch))
                 if np.isnan(gradient_norm):
                     pdb.set_trace()
                 
@@ -365,7 +292,7 @@ def get_options(batchsize, nepochs, plotevery,
 
             fn = 'params_{:>03d}'.format(epoch) # saving params
             param_values = get_all_param_values(l_output)
-            param_norm   = np.linalg.norm(np.hstack([param.flatten() for param in param_values]))
+            param_norm   = np.linalg.norm(np.hstack([np.asarray(param).flatten() for param in param_values]))
             param_names  = [param.__str__() for param in get_all_params(l_output)]
             if not enabledebug:
                 np.savez(fn + '.npz', **dict(zip(param_names, param_values)))
@@ -374,23 +301,24 @@ def get_options(batchsize, nepochs, plotevery,
                 if mean_train_loss < train_loss_lowest:
                     train_loss_lowest = mean_train_loss
                     np.savez('Y_train_pred_best.npz', Y_train_pred = train_output[1])
-                    logger.info("Found the best training prediction (Y_train_pred_best) at %d epoch" % epoch)
+
 
 
             # gradients = get_grad(X_train_batch, Yr_train_batch, Yb_train_batch)
-            gradients = get_grad(X_train_batch, Yr_train_batch)
-            gradient_norm = np.linalg.norm(np.hstack([gradient.flatten() for gradient in gradients]))
-            logger.info("  Gradient Norm : {:>0.4}, Param Norm : {:>0.4} GradNorm/ParamNorm : {:>0.4} ".format(gradient_norm, param_norm, gradient_norm/param_norm))
-            logger.info("  Train loss {:>0.4}".format(np.mean(train_loss)))
+            gradients = get_grad(train_idxs)
+            gradient_norm = np.linalg.norm(np.hstack([np.asarray(gradient).flatten() for gradient in gradients]))
+            logger.info("  Gradient Norm : {}, Param Norm : {} GradNorm/ParamNorm : {} ".format(gradient_norm, param_norm, gradient_norm/param_norm))
+            logger.info("  Train loss {:>0.4}".format(mean_train_loss))
             
             # test_loss, test_prediction = val_fn(X_test, Y_test, Y_binarized_test)
-            test_loss, test_prediction = val_fn(x_ipt.forward(X_test), Y_test)
+            test_loss, test_prediction = val_fn()
             np.savez('Y_test_pred_{}.npz'.format(epoch), Y_test_pred = test_prediction)
             logger.info("  Test loss {}".format(test_loss))
             if test_loss < test_loss_lowest:
-               test_loss_lowest = test_loss 
-               np.savez('Y_test_pred_best.npz', Y_test_pred = test_prediction)           
-               logger.info("Found the best test prediction (Y_test_pred_best) at %d epoch" % epoch)
+                test_loss_lowest = test_loss 
+                np.savez('Y_test_pred_best.npz', Y_test_pred = test_prediction)
+
+           
 if __name__ == "__main__":
     get_options()
 
