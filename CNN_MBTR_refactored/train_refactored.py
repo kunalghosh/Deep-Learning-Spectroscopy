@@ -26,14 +26,11 @@ from coulomb_shuffle import coulomb_shuffle
 
 theano.config.floatX = 'float32'
 
-def train_and_get_error(train_data, valid_data, test_data, Estd, Emean, 
+def train_and_get_error(X, y, idxs_train, idxs_valid, idxs_test,
+        # train_data, valid_data, test_data, Estd, Emean, 
         conv_filters, values_to_predict, max_epochs, batch_size, cost, 
         model_name, learn_rate, earlystop_epochs, logger, data_dim, 
         check_every=2,**kwargs):
-        # training_data,valid_data,test_data, trainin_hyperparams,model_name, model_hyperparams,
-        #                 num_train_batches,num_train_samples,batch_size = 100,max_epochs=10000,
-        #                 c_len = 30,num_hidden_neurons = 60,num_interaction_passes = 2,values_to_predict=-1
-        #                 ):
 
     """
     param check_every      : Check the validation and test error every, these many epochs.
@@ -41,9 +38,9 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
                              the training stops. It is decremented by 'check_every' depending
                              on the 'cost'. It is reset to its initial value if error reduces.
     """
-    X_train, y_train = train_data
-    X_val, y_val = valid_data
-    X_test, y_test    = test_data
+    # X_train, y_train = train_data
+    # X_val, y_val = valid_data
+    # X_test, y_test    = test_data
 
     rng = np.random.RandomState(4)
     np.random.seed(1)
@@ -65,25 +62,22 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
     lowest_test_mae = np.inf
     lowest_test_rmse = np.inf
     lowest_test_error = np.inf
-    # mu_max = None#np.max(D_train)+1
 
-    # D_val_fe = feature_expand(D_val, num_dist_basis, mu_max=mu_max)
-    # D_test_fe = feature_expand(D_test, num_dist_basis,mu_max=mu_max)
-
-    # logger.info("Expanded Test and Val.")
-
-    num_train_samples = X_train.shape[0]
+    num_train_samples = len(idxs_train)
+    # num_train_samples = X_train.shape[0]
     num_train_batches = num_train_samples // batch_size
 
     earlystop_epoch_counter = copy.deepcopy(earlystop_epochs)
 
-
-    # extend_dims = [-1]
-    # extend_dims.extend(coulomb_dims)
-    X_train = X_train.reshape(-1, 1, data_dim)
+    # X_train = X_train.reshape(-1, 1, data_dim)
+    X_val, X_test = X[idxs_valid, :], X[idxs_test, :]
     X_val = X_val.reshape(-1, 1, data_dim)
     X_test = X_test.reshape(-1, 1, data_dim)
-    logger.info("New X_train shape = {}".format(X_train.shape))
+
+    logger.info("X_val dims = {}".format(X_val.shape))
+    y_val, y_test = y[idxs_valid, :], y[idxs_test, :]
+
+    # logger.info("New X_train shape = {}".format(X_train.shape))
     # # pdb.set_trace()
     # X_train_row_norms = np.linalg.norm(X_train, axis=1)
 
@@ -94,10 +88,12 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
         # X_train = X_train.reshape(extend_dims)
 
         # Randomly permute training data
-        rand_perm = rng.permutation(X_train.shape[0])
-        X_train_perm = X_train[rand_perm]
-        # D_train_perm = D_train[rand_perm]
-        y_train_perm = y_train[rand_perm]
+        # rand_perm = rng.permutation(X_train.shape[0])
+        rand_perm = rng.permutation(num_train_samples)
+
+        # X_train_perm = X_train[rand_perm]
+        # y_train_perm = y_train[rand_perm]
+        idxs_train_perm = idxs_train[rand_perm]
 
         # logger.info("Shuffled train data")
         if learn_rate is None:
@@ -115,18 +111,21 @@ def train_and_get_error(train_data, valid_data, test_data, Estd, Emean,
 
         train_cost = 0
         for batch in range(num_train_batches):
+            batch_idxs_train_perm = idxs_train_perm[range(batch*batch_size, (batch+1)*batch_size)]
             train_cost += f_train(
-                    X_train_perm[batch*batch_size:((batch+1)*batch_size)],
-                    # feature_expand(D_train_perm[batch*batch_size:((batch+1)*batch_size)], num_dist_basis, mu_max=mu_max),
-                    y_train_perm[batch*batch_size:((batch+1)*batch_size)],
-                    learning_rate
+                    # X_train_perm[batch*batch_size:((batch+1)*batch_size)],
+                    # y_train_perm[batch*batch_size:((batch+1)*batch_size)],
+                    # learning_rate
+                    # )
+                        X[batch_idxs_train_perm, :].reshape(-1, 1, data_dim),
+                        y[batch_idxs_train_perm, :],
+                        learning_rate
                     )
             #print("miniBatch %d of %d done." % (batch, num_train_batches))
         train_cost = train_cost / num_train_batches
         # logger.info("Got training cost.")
 
         if (epoch % check_every) == 0:
-            # y_pred = f_eval_test(Z_val, D_val_fe)
             y_pred = f_eval_test(X_val)
             val_errors = y_pred-y_val
 
@@ -249,17 +248,9 @@ def get_data(path_to_coulomb_file, path_to_targets_file, logger,
 
     values_to_predict = y.shape[1]
 
-    # Split data for test and training
-    Z_train, Z_test, D_train, D_test, y_train, y_test = train_test_split(
-            Z, D, y, test_size=1.0-train_split, random_state=0)
-
-    Z_test, Z_val, D_test, D_val, y_test, y_val = train_test_split(
-            Z_test, D_test, y_test, test_size=valid_test_split, random_state=0)
-
-
-    # idxs = range(y.shape[0])
-    # idxs_train, idxs_test = train_test_split(idxs, test_size=1.0-train_split, random_state=0)
-    # idxs_test, idxs_valid = train_test_split(idxs_test, test_size=valid_test_split, random_state=0)
+    idxs = np.arange(y.shape[0])
+    idxs_train, idxs_test = train_test_split(idxs, test_size=1.0-train_split, random_state=0)
+    idxs_test, idxs_valid = train_test_split(idxs_test, test_size=valid_test_split, random_state=0)
 
     # pdb.set_trace()
     # # Splitting the data this way ensures we can work with pytables datastructures
@@ -271,31 +262,32 @@ def get_data(path_to_coulomb_file, path_to_targets_file, logger,
     # y_train, y_val, y_test = y[idxs_train, :], y[idxs_valid, :], y[idxs_test, :]
 
 
-    ### Following data splitting works only with numpy ndarrays and list
-    ### doesn't work with pytables.
+    # # Following data splitting works only with numpy ndarrays and list
+    # # doesn't work with pytables.
 
-    X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=1.0-train_split, random_state=0)
+    # X_train, X_test, y_train, y_test = train_test_split(
+    #         X, y, test_size=1.0-train_split, random_state=0)
+    # X_test, X_val, y_test, y_val = train_test_split(
+    #         X_test, y_test, test_size=valid_test_split, random_state=0)
 
-    X_test, X_val, y_test, y_val = train_test_split(
-            X_test, y_test, test_size=valid_test_split, random_state=0)
+    #################################################################
+    # Script has been modified to work with indices of              #
+    # the data array and only index into the data during training.  #
+    # Typically, only minibatches of data.
+    #################################################################
 
-    # # print([len(_) for _ in (y_train,y_val,y_test)])
-    # # Compute mean and standard deviation of per-atom-energy
-    # Z_train_non_zero = np.count_nonzero(Z_train, axis=1)
-    # Z_train_non_zero = np.expand_dims(Z_train_non_zero,axis=1)
+    # Estd = np.std(y_train, axis=0) # y values originally were free energies, they would be more when there are more atoms in the molecule, hence division scales them to be energy per atom.
+    # Emean = np.mean(y_train, axis=0) # axis needs to be specified so that we get mean and std per energy/spectrum value (i.e. dimension in y) doesn't affect when y just a scalar, i.e. free energy
 
-    Estd = np.std(y_train, axis=0) # y values originally were free energies, they would be more when there are more atoms in the molecule, hence division scales them to be energy per atom.
-    Emean = np.mean(y_train, axis=0) # axis needs to be specified so that we get mean and std per energy/spectrum value (i.e. dimension in y) doesn't affect when y just a scalar, i.e. free energy
-
-    np.savez("X_vals.npz", X_train=X_train, X_test=X_test, X_val=X_val)
-    np.savez("Y_vals.npz", Y_test=y_test, Y_train=y_train, Y_val=y_val, Y_mean=Emean, Y_std=Estd)
+    np.savez("idxs.npz", idxs_train=idxs_train, idxs_test=idxs_test, idxs_valid=idxs_valid)
+    # np.savez("Y_vals.npz", Y_test=y_test, Y_train=y_train, Y_val=y_val, Y_mean=Emean, Y_std=Estd)
 
     return_dict = {
-                "train_data": (X_train, y_train),
-                "valid_data": (X_val, y_val),
-                "test_data" : (X_test, y_test),
-                "Estd":Estd, "Emean":Emean,
+                "X" : X,
+                "y" : y,
+                "idxs_train": idxs_train,
+                "idxs_valid": idxs_valid,
+                "idxs_test" : idxs_test,
                 "values_to_predict": values_to_predict,
                 }
 
@@ -344,7 +336,7 @@ def main(**params):
 @click.argument('path_to_targets_file')#,help="Path to the energies or spectrum files.")
 def get_params_and_goto_main(path_to_coulomb_file, path_to_targets_file, model_name, 
         data_dim, conv_filters, learn_rate=0.00001, earlystop_epochs=100,
-        batch_size=100, trainSplit=0.9, valid_test_split=0.5, max_epochs=10000,
+        batch_size=100, trainSplit=0.99, valid_test_split=0.5, max_epochs=10000,
         cost="rmse"):
     
     params = {
