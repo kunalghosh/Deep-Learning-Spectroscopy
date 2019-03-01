@@ -9,4 +9,4 @@ _NOTE:_ At anytime, there would be only one experiment run inside a folder so th
 you would need to clone the repo again and then revert back to the specific revision to use the script. This is clumsy, but untill a better way is figured out, this would be our approach.
 Code for deep learning models to predict molecular electronic properties. For the deep tensor neural network model, I built upon the code from Peter Bjørn Jørgensen (DTU) and would like to thank him for sharing his implementation. 
 
-Code corresponding to the paper : https://onlinelibrary.wiley.com/doi/full/10.1002/advs.201801367
+Code corresponding to the paper : Deep Learning Spectroscopy: Neural Networks for Molecular Excitation Spectra ([PDF](https://onlinelibrary.wiley.com/doi/full/10.1002/advs.201801367))
