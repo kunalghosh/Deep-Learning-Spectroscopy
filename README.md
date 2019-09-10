@@ -14,11 +14,11 @@ Code corresponding to the paper : Deep Learning Spectroscopy: Neural Networks fo
 # Software versions used:
 * CUDA - 8.0.61 (did not use CuDNN)
 * Python - 2.7
-* theano - 0.9.0
-* pygpu - 0.6.4
-* lasagne - 0.1
-* numpy - 1.12.1
-* scipy - 0.19.0
+* Theano - 0.9.0
+* PyGPU - 0.6.4
+* Lasagne - 0.1
+* NumPy - 1.12.1
+* SciPy - 0.19.0
 
 To run the DTNN code use the following hyper parameters:
 
