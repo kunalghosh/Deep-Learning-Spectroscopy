@@ -11,8 +11,14 @@ Code for deep learning models to predict molecular electronic properties. For th
 
 Code corresponding to the paper : Deep Learning Spectroscopy: Neural Networks for Molecular Excitation Spectra ([PDF](https://onlinelibrary.wiley.com/doi/full/10.1002/advs.201801367))
 
-
-The code to reproduce the results in the paper are here : https://github.com/kunalghosh/Deep-Learning-Spectroscopy
+# Software versions used:
+* CUDA - 8.0.61 (did not use CuDNN)
+* Python - 2.7
+* theano - 0.9.0
+* pygpu - 0.6.4
+* lasagne - 0.1
+* numpy - 1.12.1
+* scipy - 0.19.0
 
 To run the DTNN code use the following hyper parameters:
 
