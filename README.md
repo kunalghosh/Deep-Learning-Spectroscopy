@@ -34,6 +34,25 @@ THEANO_FLAGS=mode=FAST_RUN,device=cuda,floatX=float32,openmp=True python /m/home
 
 The data that we trained on can be found here : https://zenodo.org/record/3386508
 
+:exclamation: **NOTE** : After publishing the paper we noticed that about twelve molecules in the dataset had less than 16 energy levels.
+*To be consistent with the text in the paper, please remove these molecules when running the experiments.*
+We anticipate the results to not change significantly, since a very small portion (12 molecules out of 132k) of the dataset is affected. The [following script](https://colab.research.google.com/drive/1uu8vEDEYAzKRVklVmf6iuqg7PoHnW5I0) was used to identify the molecules.
+
+Index in the dataset | Molecule IUPAC |
+---------------------|----------------|
+| 0 | CH4 |
+ | 1 | C2H6 |
+ | 2 | C3H4 |
+ | 3 | C2OH4 |
+ | 4 | C3H8 |
+ | 5 | C2OH6 |
+ | 6 | COCH6 |
+ | 7 | C3H6 |
+ | 8 | C2OH4 |
+ | 10 | C4H2 |
+ | 11 | C4H6 |
+ | 12 | C4H6 |
+
 Pre-trained models can be found here : https://zenodo.org/record/3386531
 
 To predict on new Coulomb matrices (we had a bug and trained on -ve of coulomb matrices so remember to do that when you predict on new CMs) with pertained CNN : 
