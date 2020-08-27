@@ -77,7 +77,7 @@ Given a predicted and target spectra we compute the RSE as follows:
 ```python
 def relative_difference(prediction, target):
     dE = 30/len(prediction) #how many eV's one dE is
-    numerator = np.sum(np.power(dE*(target-prediction),2))
+    numerator = np.sum(dE*np.power((target-prediction),2))
     denominator = np.sum(dE*target)
     
     return np.sqrt(numerator)/denominator
