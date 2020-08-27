@@ -66,3 +66,21 @@ To predict on new XYZ files using pertained DTNN :
 ```shell
 OMP_NUM_THREADS=8 THEANO_FLAGS=mode=FAST_RUN,device=cuda,floatX=float32,openmp=True python deep_tensor_refactored/predict.py --clen 40 --batch_size 50 --num_neu_1 100 --num_neu_2 200 --model_name model_neu1_neu2_with_noise $data_path/new.xyz $saved_model_path/results/model_epoch9998.pkl.gz $saved_model_path/Y_vals.npz
 ```
+
+Idea behind the Root square error (RSE) metric:
+
+with the RSE we wanted to present a scaled metric.
+Which gives some measure of how much is the error in the predicted spectra
+compared to the original target spectra.
+
+Our spectra is in -30eV to 0eV and is discretized into 300 points (```len(prediction)``` in the code)
+
+Given a predicted and target spectra we compute the RSE as follows:
+```python
+def relative_difference(prediction, target):
+    dE = 30/len(prediction) #how many eV's one dE is
+    numerator = np.sum(np.power(dE*(target-prediction),2))
+    denominator = np.sum(dE*target)
+    
+    return np.sqrt(numerator)/denominator
+```
