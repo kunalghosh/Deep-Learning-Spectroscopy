@@ -52,6 +52,8 @@ Index in the dataset | Molecule IUPAC |
  | 10 | C4H2 |
  | 11 | C4H6 |
  | 12 | C4H6 |
+ 
+ :exclamation: **NOTE** :Also the test set and validation set combined is about 13000 molecules for the 134k dataset, the test set had half the number of molecules i.e. 6627. We thank [Kanishka Singh](https://www.heibrids.berlin/people/doctoral-researchers/kanishka-singh/) for pointing out this typo.
 
 Pre-trained models can be found here : https://zenodo.org/record/3386531
 
