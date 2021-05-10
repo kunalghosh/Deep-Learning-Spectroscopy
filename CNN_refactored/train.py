@@ -4,7 +4,8 @@ import sys
 import copy
 from os import path
 import pdb
-import cPickle as pickle
+# import cPickle as pickle
+import pickle
 import logging
 import gzip
 import timeit

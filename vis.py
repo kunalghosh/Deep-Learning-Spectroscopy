@@ -81,7 +81,7 @@ Z_test = None
 Z_string = ""
 try:
     Z_test = np.load('X_vals.npz')['Z_test']
-except KeyError as e:
+except (KeyError, FileNotFoundError) as e:
     pass
 
 def save_to_file(error_list, sorted_idxs, filename):

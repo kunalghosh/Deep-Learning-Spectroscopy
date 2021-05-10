@@ -30,7 +30,7 @@ def train_and_get_error(X, y, idxs_train, idxs_valid, idxs_test,
         # train_data, valid_data, test_data, Estd, Emean, 
         conv_filters, values_to_predict, max_epochs, batch_size, cost, 
         model_name, learn_rate, earlystop_epochs, logger, data_dim, 
-        check_every=2,**kwargs):
+        check_every=2, save_every=100, **kwargs):
 
     """
     param check_every      : Check the validation and test error every, these many epochs.
@@ -142,10 +142,11 @@ def train_and_get_error(X, y, idxs_train, idxs_valid, idxs_test,
                     (mae(val_errors), mae(test_errors)))
             logger.info("VAL RMSE: %5.2f kcal/mol TEST RMSE: %5.2f kcal/mol" %
                     (rmse(val_errors), rmse(test_errors)))
-
-            all_params = lasagne.layers.get_all_param_values(l_out)
-            with gzip.open('results/model_epoch%d.pkl.gz' % (epoch), 'wb') as f:
-                pickle.dump(all_params, f, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            if (epoch % save_every) == 0:
+                all_params = lasagne.layers.get_all_param_values(l_out)
+                with gzip.open('results/model_epoch%d.pkl.gz' % (epoch), 'wb') as f:
+                    pickle.dump(all_params, f, protocol=pickle.HIGHEST_PROTOCOL)
 
             new_test_mae = mae(test_errors)
             if  new_test_mae < lowest_test_mae:
@@ -275,7 +276,7 @@ def get_data(path_to_coulomb_file, path_to_targets_file, logger,
     # the data array and only index into the data during training.  #
     # Typically, only minibatches of data.
     #################################################################
-
+ 
     # Estd = np.std(y_train, axis=0) # y values originally were free energies, they would be more when there are more atoms in the molecule, hence division scales them to be energy per atom.
     # Emean = np.mean(y_train, axis=0) # axis needs to be specified so that we get mean and std per energy/spectrum value (i.e. dimension in y) doesn't affect when y just a scalar, i.e. free energy
 
@@ -332,17 +333,18 @@ def main(**params):
 @click.option('--data_dim', default=30600, help="Length of the MBTR vector")
 @click.option('--earlystop_epochs', default=100, help="If the validation error doesn't improve in these many epochs, the training is terminated.")
 @click.option('--conv_filters', '-c', multiple=True, help="Number of convolution filters in respective layers, can be passed multiple times which corresponds to the layers in that order.")
+@click.option('--train_split', type=click.FLOAT, default=0.99, help="The training split in (0,1)")
 @click.argument('path_to_coulomb_file')#,help="Path to the XYZ file.")
 @click.argument('path_to_targets_file')#,help="Path to the energies or spectrum files.")
 def get_params_and_goto_main(path_to_coulomb_file, path_to_targets_file, model_name, 
         data_dim, conv_filters, learn_rate=0.00001, earlystop_epochs=100,
-        batch_size=100, trainSplit=0.99, valid_test_split=0.5, max_epochs=10000,
+        batch_size=100, train_split=0.99, valid_test_split=0.5, max_epochs=10000,
         cost="rmse"):
     
     params = {
             "path_to_coulomb_file":path_to_coulomb_file, 
             "path_to_targets_file":path_to_targets_file, 
-            "train_split" : trainSplit,
+            "train_split" : train_split,
             "valid_test_split" : valid_test_split,
             "max_epochs" :  max_epochs,
             "batch_size" : batch_size,
