@@ -84,3 +84,21 @@ def relative_difference(prediction, target):
     
     return np.sqrt(numerator)/denominator
 ```
+
+# Cite Us
+```
+@article{ghosh_dlspectroscopy_2019,
+author = {Ghosh, Kunal and Stuke, Annika and Todorović, Milica and Jørgensen, Peter Bjørn and Schmidt, Mikkel N. and Vehtari, Aki and Rinke, Patrick},
+title = {Deep Learning Spectroscopy: Neural Networks for Molecular Excitation Spectra},
+journal = {Advanced Science},
+volume = {6},
+number = {9},
+pages = {1801367},
+keywords = {artificial intelligence, DFT calculations, excitation spectra, neural networks, organic molecules},
+doi = {https://doi.org/10.1002/advs.201801367},
+url = {https://onlinelibrary.wiley.com/doi/abs/10.1002/advs.201801367},
+eprint = {https://onlinelibrary.wiley.com/doi/pdf/10.1002/advs.201801367},
+abstract = {Abstract Deep learning methods for the prediction of molecular excitation spectra are presented. For the example of the electronic density of states of 132k organic molecules, three different neural network architectures: multilayer perceptron (MLP), convolutional neural network (CNN), and deep tensor neural network (DTNN) are trained and assessed. The inputs for the neural networks are the coordinates and charges of the constituent atoms of each molecule. Already, the MLP is able to learn spectra, but the root mean square error (RMSE) is still as high as 0.3 eV. The learning quality improves significantly for the CNN (RMSE = 0.23 eV) and reaches its best performance for the DTNN (RMSE = 0.19 eV). Both CNN and DTNN capture even small nuances in the spectral shape. In a showcase application of this method, the structures of 10k previously unseen organic molecules are scanned and instant spectra predictions are obtained to identify molecules for potential applications.},
+year = {2019}
+}
+```
